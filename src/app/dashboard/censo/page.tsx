@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useRef, useMemo } from "react";
@@ -6,11 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import { Database, FileUp, CheckCircle2, FileText, Info, Loader2, Search, FilterX, Globe } from "lucide-react";
+import { Database, FileUp, CheckCircle2, FileText, Info, Loader2, Search, FilterX, Globe, Building2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface ParsedSchool {
   id: string;
@@ -19,10 +19,18 @@ interface ParsedSchool {
   municipio: string;
   uf: string;
   localizacao: string;
+  tp_dependencia: string; // 1: Federal, 2: Estadual, 3: Municipal, 4: Privada
   total_matriculas: number;
   total_eti: number;
   percentual_eti: number;
 }
+
+const DEPENDENCIA_LABELS: Record<string, string> = {
+  "1": "Federal",
+  "2": "Estadual",
+  "3": "Municipal",
+  "4": "Privada",
+};
 
 export default function CensoAdminPage() {
   const { toast } = useToast();
@@ -36,6 +44,7 @@ export default function CensoAdminPage() {
   // Filtros de UI
   const [searchQuery, setSearchQuery] = useState("");
   const [municipioFilter, setMunicipioFilter] = useState("");
+  const [dependenciaFilter, setDependenciaFilter] = useState("all");
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -71,6 +80,7 @@ export default function CensoAdminPage() {
       const parseNum = (val: any) => parseInt(val || "0", 10);
 
       const total_matriculas = parseNum(row.QT_MAT_BAS);
+      // Colunas de Tempo Integral oficiais do INEP
       const total_eti = parseNum(row.QT_MAT_INF_INT) + parseNum(row.QT_MAT_FUND_INT) + parseNum(row.QT_MAT_MED_INT);
       
       const schoolData: ParsedSchool = {
@@ -80,6 +90,7 @@ export default function CensoAdminPage() {
         municipio: row.NO_MUNICIPIO || "N/A",
         uf: row.SG_UF || "N/A",
         localizacao: row.TP_LOCALIZACAO === "2" ? "Rural" : "Urbana",
+        tp_dependencia: row.TP_DEPENDENCIA || "0",
         total_matriculas,
         total_eti,
         percentual_eti: total_matriculas > 0 ? Number(((total_eti / total_matriculas) * 100).toFixed(1)) : 0
@@ -146,9 +157,12 @@ export default function CensoAdminPage() {
                            school.codigo_inep.includes(searchQuery);
       const matchesMunicipio = municipioFilter === "" || 
                               school.municipio.toLowerCase().includes(municipioFilter.toLowerCase());
-      return matchesSearch && matchesMunicipio;
+      const matchesDependencia = dependenciaFilter === "all" || 
+                               school.tp_dependencia === dependenciaFilter;
+      
+      return matchesSearch && matchesMunicipio && matchesDependencia;
     });
-  }, [parsedSchools, searchQuery, municipioFilter]);
+  }, [parsedSchools, searchQuery, municipioFilter, dependenciaFilter]);
 
   const stats = useMemo(() => {
     if (filteredData.length === 0) return null;
@@ -158,7 +172,7 @@ export default function CensoAdminPage() {
     return {
       totalMat,
       totalETI,
-      percentETI: ((totalETI / totalMat) * 100).toFixed(1),
+      percentETI: totalMat > 0 ? ((totalETI / totalMat) * 100).toFixed(1) : "0.0",
       count: filteredData.length,
       municipios: uniqueMun
     };
@@ -169,7 +183,7 @@ export default function CensoAdminPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-headline font-bold text-primary">Painel de Administração: Censo Escolar</h2>
-          <p className="text-muted-foreground">Importação global de microdados INEP sem restrição de município</p>
+          <p className="text-muted-foreground">Importação global de microdados INEP e filtragem administrativa</p>
         </div>
         <Badge variant="outline" className="h-fit py-1 px-3 border-primary/30 text-primary bg-primary/5">
           <Globe className="h-3 w-3 mr-2" /> Modo Administrador
@@ -226,7 +240,7 @@ export default function CensoAdminPage() {
 
             <div className="flex gap-2 p-3 bg-blue-50 rounded-lg text-blue-800 text-[11px] border border-blue-100">
               <Info className="h-4 w-4 shrink-0" />
-              <p>Este painel aceita o arquivo completo do INEP. A memória do navegador processa até ~100 mil linhas sem lentidão.</p>
+              <p>Este painel aceita o arquivo completo do INEP. A memória do navegador processa arquivos estaduais com eficiência.</p>
             </div>
           </CardContent>
         </Card>
@@ -236,7 +250,7 @@ export default function CensoAdminPage() {
             <div className="flex flex-col md:flex-row justify-between gap-4">
               <div>
                 <CardTitle className="text-lg">Explorador de Dados Consolidados</CardTitle>
-                <CardDescription>Visualize e filtre escolas de qualquer município importado</CardDescription>
+                <CardDescription>Visualize e filtre escolas por município e dependência administrativa</CardDescription>
               </div>
               {step === 2 && (
                 <Button variant="outline" size="sm" onClick={() => { setStep(1); setParsedSchools([]); setFileName(null); }} className="gap-2">
@@ -258,7 +272,7 @@ export default function CensoAdminPage() {
               </div>
             ) : (
               <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   <div className="relative">
                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input 
@@ -269,7 +283,7 @@ export default function CensoAdminPage() {
                     />
                   </div>
                   <div className="relative">
-                    <FilterX className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Building2 className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input 
                       placeholder="Filtrar por Município..." 
                       className="pl-9 h-9"
@@ -277,6 +291,23 @@ export default function CensoAdminPage() {
                       onChange={(e) => setMunicipioFilter(e.target.value)}
                     />
                   </div>
+                  <div>
+                    <Select value={dependenciaFilter} onValueChange={setDependenciaFilter}>
+                      <SelectTrigger className="h-9">
+                        <SelectValue placeholder="Dependência Administrativa" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas as Dependências</SelectItem>
+                        <SelectItem value="1">Federal</SelectItem>
+                        <SelectItem value="2">Estadual</SelectItem>
+                        <SelectItem value="3">Municipal</SelectItem>
+                        <SelectItem value="4">Privada</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="bg-muted/50 p-2 px-3 rounded-lg border flex flex-col justify-center">
                     <span className="text-[10px] uppercase font-bold text-muted-foreground">Total de Escolas</span>
                     <span className="text-lg font-bold">{stats?.count}</span>
@@ -284,6 +315,14 @@ export default function CensoAdminPage() {
                   <div className="bg-primary/5 p-2 px-3 rounded-lg border border-primary/10 flex flex-col justify-center">
                     <span className="text-[10px] uppercase font-bold text-primary/70">Média % ETI</span>
                     <span className="text-lg font-bold text-primary">{stats?.percentETI}%</span>
+                  </div>
+                  <div className="bg-muted/50 p-2 px-3 rounded-lg border flex flex-col justify-center">
+                    <span className="text-[10px] uppercase font-bold text-muted-foreground">Matrículas</span>
+                    <span className="text-lg font-bold">{stats?.totalMat.toLocaleString()}</span>
+                  </div>
+                  <div className="bg-muted/50 p-2 px-3 rounded-lg border flex flex-col justify-center">
+                    <span className="text-[10px] uppercase font-bold text-muted-foreground">Alunos ETI</span>
+                    <span className="text-lg font-bold">{stats?.totalETI.toLocaleString()}</span>
                   </div>
                 </div>
 
@@ -294,7 +333,7 @@ export default function CensoAdminPage() {
                         <TableRow>
                           <TableHead className="w-[120px]">INEP</TableHead>
                           <TableHead>Escola</TableHead>
-                          <TableHead>Município / UF</TableHead>
+                          <TableHead>Rede / Local</TableHead>
                           <TableHead className="text-right">Matrículas</TableHead>
                           <TableHead className="text-right">ETI</TableHead>
                           <TableHead className="text-right">% ETI</TableHead>
@@ -307,11 +346,13 @@ export default function CensoAdminPage() {
                               <TableCell className="font-mono text-xs">{school.codigo_inep}</TableCell>
                               <TableCell>
                                 <div className="font-medium text-sm">{school.nome}</div>
-                                <div className="text-[10px] text-muted-foreground uppercase">{school.localizacao}</div>
+                                <div className="text-[10px] text-muted-foreground uppercase">{school.municipio} - {school.uf}</div>
                               </TableCell>
                               <TableCell>
-                                <div className="text-sm">{school.municipio}</div>
-                                <div className="text-xs text-muted-foreground">{school.uf}</div>
+                                <Badge variant="outline" className="text-[10px] py-0 font-medium">
+                                  {DEPENDENCIA_LABELS[school.tp_dependencia] || "N/A"}
+                                </Badge>
+                                <div className="text-[10px] text-muted-foreground uppercase mt-1">{school.localizacao}</div>
                               </TableCell>
                               <TableCell className="text-right font-medium">{school.total_matriculas}</TableCell>
                               <TableCell className="text-right text-primary/80">{school.total_eti}</TableCell>
@@ -345,7 +386,7 @@ export default function CensoAdminPage() {
                       </div>
                       <div>
                         <p className="text-green-800 font-bold text-sm">Pronto para Consolidação</p>
-                        <p className="text-green-700 text-xs">Análise de {stats?.municipios} municípios selecionada.</p>
+                        <p className="text-green-700 text-xs">Análise de {stats?.municipios} municípios e {filteredData.length} escolas selecionada.</p>
                       </div>
                     </div>
                     <Button className="bg-green-700 hover:bg-green-800 text-white border-none shadow-lg shadow-green-900/20">
