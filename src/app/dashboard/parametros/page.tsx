@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState } from "react";
@@ -8,9 +7,10 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Save, Info, ScrollText } from "lucide-react";
+import { Save, Info, ScrollText, Utensils } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { DEFAULT_PARAMETERS } from "@/lib/constants";
 
 const VAAF_ITEMS = [
   { code: "A1", segment: "Creche pública — Integral (7h+)", factor: "1.550" },
@@ -32,7 +32,7 @@ const VAAF_ITEMS = [
 
 export default function ParametrosPage() {
   const { toast } = useToast();
-  const [vaafBase, setVaafBase] = useState("5962.79");
+  const [vaafBase, setVaafBase] = useState(DEFAULT_PARAMETERS.vaaf_base.toString());
 
   const handleSave = () => {
     toast({
@@ -78,7 +78,7 @@ export default function ParametrosPage() {
                   </div>
                   <div className="space-y-2 p-4 bg-muted/30 rounded-lg border">
                     <Label htmlFor="vaat" className="text-xs uppercase tracking-wider text-muted-foreground">Complementação VAAT Estimada (R$)</Label>
-                    <Input id="vaat" className="text-lg font-bold font-mono" placeholder="850.000,00" />
+                    <Input id="vaat" className="text-lg font-bold font-mono" placeholder="850.000,00" defaultValue={DEFAULT_PARAMETERS.vaat_total_rede.toLocaleString('pt-BR')} />
                   </div>
                 </div>
 
@@ -117,8 +117,11 @@ export default function ParametrosPage() {
         <TabsContent value="pnae">
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Alimentação e Transporte</CardTitle>
-              <CardDescription>Repasses PNAE (ajustados 2026) e PNATE</CardDescription>
+              <div className="flex items-center gap-2">
+                <Utensils className="h-5 w-5 text-primary" />
+                <CardTitle className="text-lg">Alimentação Escolar (PNAE 2026)</CardTitle>
+              </div>
+              <CardDescription>Valores per capita ajustados com reajuste de 14,35%</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -129,28 +132,47 @@ export default function ParametrosPage() {
                     </h4>
                     <div className="space-y-3">
                       <div className="flex justify-between items-center text-sm">
-                        <Label>Ensino Integral (7h+)</Label>
-                        <Input className="w-24 h-8" defaultValue="1,57" />
+                        <Label>Creche e Ensino Integral (7h+)</Label>
+                        <Input className="w-24 h-8 text-right" defaultValue="1,57" />
                       </div>
                       <div className="flex justify-between items-center text-sm">
                         <Label>Pré-escola Parcial</Label>
-                        <Input className="w-24 h-8" defaultValue="0,82" />
+                        <Input className="w-24 h-8 text-right" defaultValue="0,82" />
                       </div>
                       <div className="flex justify-between items-center text-sm">
                         <Label>EF/EM Parcial</Label>
-                        <Input className="w-24 h-8" defaultValue="0,57" />
+                        <Input className="w-24 h-8 text-right" defaultValue="0,57" />
+                      </div>
+                      <div className="flex justify-between items-center text-sm">
+                        <Label>EJA</Label>
+                        <Input className="w-24 h-8 text-right" defaultValue="0,57" />
+                      </div>
+                      <div className="flex justify-between items-center text-sm">
+                        <Label>Indígenas e Quilombolas</Label>
+                        <Input className="w-24 h-8 text-right" defaultValue="0,98" />
                       </div>
                     </div>
                   </div>
                   <div className="space-y-4">
-                    <h4 className="font-medium text-sm">PNATE</h4>
+                    <h4 className="font-medium text-sm">Calendário e Outros</h4>
                     <div className="space-y-3">
                       <div className="flex justify-between items-center text-sm">
-                        <Label>Valor Aluno/Semestre</Label>
-                        <Input className="w-24 h-8" defaultValue="58,00" />
+                        <Label>Dias Letivos (Padrão)</Label>
+                        <Input className="w-24 h-8 text-right" defaultValue="200" />
+                      </div>
+                      <div className="flex justify-between items-center text-sm pt-4 border-t">
+                        <Label className="font-bold">PNATE (Transporte)</Label>
+                      </div>
+                      <div className="flex justify-between items-center text-sm">
+                        <Label>Valor Aluno/Semestre (Médio)</Label>
+                        <Input className="w-24 h-8 text-right" defaultValue="58,00" />
                       </div>
                     </div>
                   </div>
+               </div>
+               <div className="p-4 bg-blue-50 border border-blue-100 rounded-lg text-blue-800 text-xs">
+                 <p className="font-bold mb-1">Nota Técnica PNAE 2026:</p>
+                 <p>Os valores acima refletem o reajuste oficial aplicado para o exercício de 2026, garantindo a manutenção da qualidade nutricional frente à inflação de alimentos.</p>
                </div>
             </CardContent>
           </Card>
@@ -166,11 +188,11 @@ export default function ParametrosPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label>MDE Líquido para ETI (Anual)</Label>
-                  <Input placeholder="1.200.000,00" />
+                  <Input placeholder="1.200.000,00" defaultValue={DEFAULT_PARAMETERS.mde_liquido_eti.toLocaleString('pt-BR')} />
                 </div>
                 <div className="space-y-2">
                   <Label>Quota Salário Educação (QSE)</Label>
-                  <Input placeholder="180.000,00" />
+                  <Input placeholder="180.000,00" defaultValue={DEFAULT_PARAMETERS.qse.toLocaleString('pt-BR')} />
                 </div>
               </div>
             </CardContent>
