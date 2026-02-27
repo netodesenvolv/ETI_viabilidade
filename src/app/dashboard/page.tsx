@@ -50,12 +50,11 @@ export default function DashboardPage() {
     if (!schools || schools.length === 0) return { analysis: [], stats: null };
 
     const filteredSchools = schools.filter(s => {
-      const matchesLocalizacao = filterLocalizacao === "todas" ? true : s.localizacao === filterLocalizacao;
-      const matchesDependencia = filterDependencia === "todas" ? true : String(s.tp_dependencia) === filterDependencia;
+      const matchesLocalizacao = filterLocalizacao === "todas" ? true : String(s.localizacao).toLowerCase() === filterLocalizacao.toLowerCase();
+      // Garantir que a comparação de dependência seja robusta contra tipos
+      const matchesDependencia = filterDependencia === "todas" ? true : String(s.tp_dependencia).trim() === filterDependencia;
       return matchesLocalizacao && matchesDependencia;
     });
-
-    if (filteredSchools.length === 0) return { analysis: [], stats: null };
 
     const totalMatriculasRede = filteredSchools.reduce((acc, s: any) => acc + (s.total_matriculas || 0), 0);
     const totalETIRede = filteredSchools.reduce((acc, s: any) => acc + (s.total_eti || 0), 0);
@@ -98,7 +97,7 @@ export default function DashboardPage() {
 
     const totalSaldo = schoolAnalyses.reduce((acc, s) => acc + s.saldo, 0);
     const deficitCount = schoolAnalyses.filter(s => s.status === 'deficit').length;
-    const avgCusto = schoolAnalyses.reduce((acc, s) => acc + s.custoAluno, 0) / (schoolAnalyses.length || 1);
+    const avgCusto = schoolAnalyses.length > 0 ? schoolAnalyses.reduce((acc, s) => acc + s.custoAluno, 0) / schoolAnalyses.length : 0;
     const totalReceitaRede = schoolAnalyses.reduce((acc, s) => acc + s.receitaTotal, 0);
 
     return {
@@ -285,26 +284,34 @@ export default function DashboardPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {analysis.map((school) => (
-                  <TableRow key={school.id}>
-                    <TableCell>
-                      <div className="font-medium text-sm">{school.nome}</div>
-                      <div className="text-[10px] text-muted-foreground uppercase flex gap-2">
-                        <span>{school.localizacao}</span>
-                        <span>•</span>
-                        <span>{DEPENDENCIA_LABELS[school.tp_dependencia] || "Dependência " + school.tp_dependencia}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">R$ {school.receitaAluno.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
-                    <TableCell className="text-right">R$ {school.custoAluno.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
-                    <TableCell className="text-right">{school.percentual_eti || 0}%</TableCell>
-                    <TableCell>
-                      <Badge variant={school.status === 'superavit' ? 'default' : school.status === 'deficit' ? 'destructive' : 'secondary'} className={school.status === 'superavit' ? 'bg-green-600' : ''}>
-                        {school.status.toUpperCase()}
-                      </Badge>
+                {analysis.length > 0 ? (
+                  analysis.map((school) => (
+                    <TableRow key={school.id}>
+                      <TableCell>
+                        <div className="font-medium text-sm">{school.nome}</div>
+                        <div className="text-[10px] text-muted-foreground uppercase flex gap-2">
+                          <span className="font-bold">{String(school.localizacao).toUpperCase()}</span>
+                          <span>•</span>
+                          <span>{DEPENDENCIA_LABELS[String(school.tp_dependencia)] || "Dependência " + school.tp_dependencia}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">R$ {school.receitaAluno.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                      <TableCell className="text-right">R$ {school.custoAluno.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                      <TableCell className="text-right">{school.percentual_eti || 0}%</TableCell>
+                      <TableCell>
+                        <Badge variant={school.status === 'superavit' ? 'default' : school.status === 'deficit' ? 'destructive' : 'secondary'} className={school.status === 'superavit' ? 'bg-green-600' : ''}>
+                          {school.status.toUpperCase()}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={5} className="h-24 text-center text-muted-foreground italic">
+                      Nenhuma unidade encontrada para os filtros selecionados.
                     </TableCell>
                   </TableRow>
-                ))}
+                )}
               </TableBody>
             </Table>
           </CardContent>
@@ -329,9 +336,9 @@ export default function DashboardPage() {
               <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-4 border-2 border-dashed rounded-lg">
                 <FileText className="h-12 w-12 text-muted-foreground/30" />
                 <p className="text-muted-foreground text-sm">
-                  {isGenerating ? "Nossa IA está analisando os microdados financeiros..." : "Clique em 'Análise IA' para gerar o diagnóstico narrativo da rede."}
+                  {isGenerating ? "Nossa IA está analisando os microdados financeiros..." : "Clique em 'Análise IA' para gerar o diagnóstico narrativo da rede filtrada."}
                 </p>
-                {!isGenerating && <Button onClick={handleGenerateReport} size="sm">Gerar Agora</Button>}
+                {!isGenerating && <Button onClick={handleGenerateReport} size="sm" disabled={analysis.length === 0}>Gerar Agora</Button>}
               </div>
             )}
           </CardContent>
