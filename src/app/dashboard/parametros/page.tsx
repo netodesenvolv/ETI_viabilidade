@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Save, Info, ScrollText, Utensils, Loader2 } from "lucide-react";
+import { Save, Info, ScrollText, Utensils, Loader2, AlertTriangle, MapPin } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { DEFAULT_PARAMETERS } from "@/lib/constants";
@@ -17,6 +17,7 @@ import { doc, setDoc } from "firebase/firestore";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { FundingParameters } from "@/types";
+import { Badge } from "@/components/ui/badge";
 
 const VAAF_LABELS: Record<string, string> = {
   A1: "Creche pública — Integral (7h+)",
@@ -47,7 +48,7 @@ export default function ParametrosPage() {
 
   // Perfil e Município
   const userProfileRef = useMemo(() => (db && user ? doc(db, 'users', user.uid) : null), [db, user]);
-  const { data: profile } = useDoc(userProfileRef);
+  const { data: profile, loading: profileLoading } = useDoc(userProfileRef);
   const municipioId = profile?.municipioId;
 
   // Carregar Parâmetros do Firestore
@@ -77,22 +78,26 @@ export default function ParametrosPage() {
     setIsSaving(true);
     const docRef = doc(db, 'municipios', municipioId, 'config', 'parameters');
     
-    setDoc(docRef, {
+    const dataToSave = {
       ...localParams,
       updatedAt: new Date().toISOString(),
-      updatedBy: user?.email
-    }, { merge: true })
+      updatedBy: user?.email,
+      municipio: profile?.municipio,
+      municipioId: municipioId
+    };
+
+    setDoc(docRef, dataToSave, { merge: true })
       .then(() => {
         toast({
           title: "Parâmetros salvos",
-          description: "As configurações foram atualizadas no banco de dados do município.",
+          description: `As configurações de ${profile?.municipio} foram atualizadas com sucesso.`,
         });
       })
       .catch(async (error) => {
         const permissionError = new FirestorePermissionError({
           path: docRef.path,
           operation: 'write',
-          requestResourceData: localParams,
+          requestResourceData: dataToSave,
         });
         errorEmitter.emit('permission-error', permissionError);
       })
@@ -115,20 +120,37 @@ export default function ParametrosPage() {
     }));
   };
 
-  if (paramsLoading) {
+  if (paramsLoading || profileLoading) {
     return (
       <div className="h-[60vh] flex flex-col items-center justify-center gap-4">
         <Loader2 className="h-10 w-10 animate-spin text-primary opacity-20" />
-        <p className="text-muted-foreground">Carregando parâmetros...</p>
+        <p className="text-muted-foreground">Reconhecendo município e carregando parâmetros...</p>
+      </div>
+    );
+  }
+
+  if (!municipioId && !profileLoading) {
+    return (
+      <div className="h-[60vh] flex flex-col items-center justify-center text-center p-8 space-y-4">
+        <AlertTriangle className="h-12 w-12 text-destructive/50" />
+        <h3 className="text-xl font-bold">Município não identificado</h3>
+        <p className="text-muted-foreground max-w-xs">
+          O seu perfil de acesso não possui um vínculo municipal configurado. Entre em contato com o administrador do sistema.
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-headline font-bold text-primary">Parâmetros de Financiamento</h2>
+          <div className="flex items-center gap-2 mb-1">
+            <h2 className="text-3xl font-headline font-bold text-primary">Parâmetros de Financiamento</h2>
+            <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 gap-1.5 py-1">
+              <MapPin className="h-3 w-3" /> {profile?.municipio}
+            </Badge>
+          </div>
           <p className="text-muted-foreground">Configuração dos valores de repasse para o exercício 2026 em {profile?.municipio}</p>
         </div>
         <Button onClick={handleSave} className="gap-2 shadow-lg shadow-primary/20" disabled={isSaving}>
@@ -152,7 +174,7 @@ export default function ParametrosPage() {
                   <ScrollText className="h-5 w-5 text-primary" />
                   <CardTitle className="text-lg">Tabela VAAF e VAAT 2026</CardTitle>
                 </div>
-                <CardDescription>Valores base e fatores de ponderação (Resolução vigente)</CardDescription>
+                <CardDescription>Valores base e fatores de ponderação aplicados em {profile?.municipio}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -222,7 +244,7 @@ export default function ParametrosPage() {
                 <Utensils className="h-5 w-5 text-primary" />
                 <CardTitle className="text-lg">Alimentação Escolar (PNAE 2026)</CardTitle>
               </div>
-              <CardDescription>Valores per capita ajustados para o município</CardDescription>
+              <CardDescription>Valores per capita ajustados com reajuste de 14,35% sobre 2025</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -275,10 +297,10 @@ export default function ParametrosPage() {
                     </div>
                   </div>
                   <div className="space-y-4">
-                    <h4 className="font-medium text-sm">Calendário e Outros</h4>
+                    <h4 className="font-medium text-sm">Calendário Letivo</h4>
                     <div className="space-y-3">
                       <div className="flex justify-between items-center text-sm">
-                        <Label>Dias Letivos (Padrão)</Label>
+                        <Label>Dias Letivos (Padrão INEP)</Label>
                         <Input 
                           className="w-24 h-8 text-right" 
                           value={localParams.pnae.dias_letivos.toString()}
@@ -296,7 +318,7 @@ export default function ParametrosPage() {
            <Card>
             <CardHeader>
               <CardTitle className="text-lg">MDE e Recursos Próprios</CardTitle>
-              <CardDescription>Aportes anuais do município</CardDescription>
+              <CardDescription>Aportes anuais do município de {profile?.municipio}</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
