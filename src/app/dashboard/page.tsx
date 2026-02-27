@@ -1,8 +1,9 @@
+
 "use client"
 
 import { useState, useMemo } from "react";
 import { KPICard } from "@/components/dashboard/kpi-card";
-import { Users, GraduationCap, DollarSign, AlertCircle, TrendingUp, Sparkles, FileText, Download, Loader2 } from "lucide-react";
+import { Users, GraduationCap, DollarSign, AlertCircle, TrendingUp, Sparkles, FileText, Download, Loader2, Filter } from "lucide-react";
 import { DEFAULT_PARAMETERS } from "@/lib/constants";
 import { calcularVAAF, calcularVAAT, calcularPNAE, calcularMDE, calcularOutros } from "@/lib/calculations";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -14,11 +15,13 @@ import { useToast } from "@/hooks/use-toast";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth, useFirestore, useUser, useDoc, useCollection } from "@/firebase";
 import { doc, collection } from "firebase/firestore";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function DashboardPage() {
   const { toast } = useToast();
   const [isGenerating, setIsGenerating] = useState(false);
   const [report, setReport] = useState<string | null>(null);
+  const [filterLocalizacao, setFilterLocalizacao] = useState<string>("todas");
 
   const auth = useAuth();
   const db = useFirestore();
@@ -38,10 +41,17 @@ export default function DashboardPage() {
   const { analysis, stats } = useMemo(() => {
     if (!schools || schools.length === 0) return { analysis: [], stats: null };
 
-    const totalMatriculasRede = schools.reduce((acc, s: any) => acc + (s.total_matriculas || 0), 0);
-    const totalETIRede = schools.reduce((acc, s: any) => acc + (s.total_eti || 0), 0);
+    // Filtro por tipo de entidade (Localização)
+    const filteredSchools = schools.filter(s => 
+      filterLocalizacao === "todas" ? true : s.localizacao === filterLocalizacao
+    );
 
-    const schoolAnalyses = schools.map((school: any) => {
+    if (filteredSchools.length === 0) return { analysis: [], stats: null };
+
+    const totalMatriculasRede = filteredSchools.reduce((acc, s: any) => acc + (s.total_matriculas || 0), 0);
+    const totalETIRede = filteredSchools.reduce((acc, s: any) => acc + (s.total_eti || 0), 0);
+
+    const schoolAnalyses = filteredSchools.map((school: any) => {
       const schoolMatriculas = school.matriculas || {
         creche_integral: 0, creche_parcial: 0, creche_conveniada_int: 0, creche_conveniada_par: 0,
         pre_integral: 0, pre_parcial: 0, ef_ai_integral: 0, ef_ai_parcial: 0, ef_af_integral: 0, ef_af_parcial: 0,
@@ -79,7 +89,7 @@ export default function DashboardPage() {
 
     const totalSaldo = schoolAnalyses.reduce((acc, s) => acc + s.saldo, 0);
     const deficitCount = schoolAnalyses.filter(s => s.status === 'deficit').length;
-    const avgCusto = schoolAnalyses.reduce((acc, s) => acc + s.custoAluno, 0) / schoolAnalyses.length;
+    const avgCusto = schoolAnalyses.reduce((acc, s) => acc + s.custoAluno, 0) / (schoolAnalyses.length || 1);
     const totalReceitaRede = schoolAnalyses.reduce((acc, s) => acc + s.receitaTotal, 0);
 
     return {
@@ -94,7 +104,7 @@ export default function DashboardPage() {
         receitaAlunoMedio: totalMatriculasRede > 0 ? totalReceitaRede / totalMatriculasRede : 0
       }
     };
-  }, [schools, parametros]);
+  }, [schools, parametros, filterLocalizacao]);
 
   const handleGenerateReport = async () => {
     if (!stats) return;
@@ -112,7 +122,7 @@ export default function DashboardPage() {
         saldoTotalRede: Math.round(stats.totalSaldo),
         saldoStatus: stats.totalSaldo >= 0 ? "superávit" : "déficit",
         escolasEmDeficit: stats.deficitCount,
-        totalEscolas: schools?.length || 0,
+        totalEscolas: analysis.length,
         escolasETIlt20Percent: analysis.filter(s => (s.percentual_eti || 0) < 20).length,
         composicaoReceitas: {
           fundebVaaf: { amount: Math.round(stats.totalMatriculasRede * parametros.vaaf_base * 0.7), percentage: 70 },
@@ -166,12 +176,30 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-headline font-bold text-primary">Diagnóstico: {profile?.municipio}</h2>
           <p className="text-muted-foreground">Visão geral do exercício fiscal 2026</p>
         </div>
-        <div className="flex gap-2">
+        
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border shadow-sm">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Entidade:</span>
+            <Select value={filterLocalizacao} onValueChange={setFilterLocalizacao}>
+              <SelectTrigger className="h-8 w-[140px] border-none shadow-none focus:ring-0 text-xs font-bold">
+                <SelectValue placeholder="Localização" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todas Unidades</SelectItem>
+                <SelectItem value="urbana">Urbana</SelectItem>
+                <SelectItem value="rural">Rural</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="h-8 w-px bg-border hidden lg:block" />
+
           <Button variant="outline" size="sm" className="gap-2">
             <Download className="h-4 w-4" /> Exportar PDF
           </Button>
@@ -184,10 +212,10 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard 
-          title="Matrículas Totais" 
+          title="Matrículas Filtradas" 
           value={stats?.totalMatriculasRede.toLocaleString() || "0"} 
           icon={Users}
-          subtitle="Rede Municipal"
+          subtitle={filterLocalizacao === "todas" ? "Rede Municipal" : `Unidades ${filterLocalizacao}`}
         />
         <KPICard 
           title="Alunos em ETI" 
@@ -196,7 +224,7 @@ export default function DashboardPage() {
           subtitle={`${stats?.totalETIRede} alunos em tempo integral`}
         />
         <KPICard 
-          title="Saldo da Rede" 
+          title="Saldo do Grupo" 
           value={`R$ ${((stats?.totalSaldo || 0) / 1000).toFixed(1)}k`} 
           icon={DollarSign}
           subtitle={stats?.totalSaldo! >= 0 ? "Superávit projetado" : "Déficit projetado"}
@@ -206,7 +234,7 @@ export default function DashboardPage() {
           title="Escolas em Déficit" 
           value={stats?.deficitCount || 0} 
           icon={AlertCircle}
-          subtitle={`De ${schools.length} escolas totais`}
+          subtitle={`De ${analysis.length} unidades no filtro`}
           className={stats?.deficitCount! > 0 ? "bg-orange-50/50" : ""}
         />
       </div>
@@ -215,7 +243,11 @@ export default function DashboardPage() {
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle className="font-headline">Diagnóstico por Escola</CardTitle>
-            <CardDescription>Resumo financeiro e operacional consolidado</CardDescription>
+            <CardDescription>
+              {filterLocalizacao === "todas" 
+                ? "Resumo financeiro de toda a rede" 
+                : `Exibindo apenas unidades de localização ${filterLocalizacao}`}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
@@ -231,7 +263,10 @@ export default function DashboardPage() {
               <TableBody>
                 {analysis.map((school) => (
                   <TableRow key={school.id}>
-                    <TableCell className="font-medium">{school.nome}</TableCell>
+                    <TableCell>
+                      <div className="font-medium text-sm">{school.nome}</div>
+                      <div className="text-[10px] text-muted-foreground uppercase">{school.localizacao}</div>
+                    </TableCell>
                     <TableCell className="text-right">R$ {school.receitaAluno.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
                     <TableCell className="text-right">R$ {school.custoAluno.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
                     <TableCell className="text-right">{school.percentual_eti || 0}%</TableCell>
