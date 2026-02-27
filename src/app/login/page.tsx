@@ -3,7 +3,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { GraduationCap, Loader2, Lock, Mail, ShieldCheck } from "lucide-react"
+import { GraduationCap, Loader2, Lock, Mail, ShieldCheck, MapPin } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -19,6 +19,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [seeding, setSeeding] = useState(false)
+  const [targetCity, setTargetCity] = useState("Teixeira de Freitas")
+  const [targetIbge, setTargetIbge] = useState("2932705")
   const router = useRouter()
   const { toast } = useToast()
   
@@ -59,20 +61,20 @@ export default function LoginPage() {
       const userCredential = await createUserWithEmailAndPassword(auth, adminEmail, adminPass)
       const user = userCredential.user
 
-      // Criar Perfil no Firestore
+      // Criar Perfil no Firestore com município padrão para teste
       await setDoc(doc(db, "users", user.uid), {
         name: "Administrador Geral",
         email: adminEmail,
         role: "Admin",
-        municipio: "Gestão Central",
-        municipioId: "0000000", // ID mestre para visão global
+        municipio: targetCity,
+        municipioId: targetIbge,
         status: "Ativo",
         createdAt: new Date().toISOString()
       })
 
       toast({
         title: "Administrador Criado!",
-        description: "O perfil de admin geral foi configurado com sucesso.",
+        description: `Perfil configurado para ${targetCity}.`,
       })
       
       setEmail(adminEmail)
@@ -81,7 +83,7 @@ export default function LoginPage() {
       if (error.code === 'auth/email-already-in-use') {
         toast({
           title: "Atenção",
-          description: "Este administrador já está cadastrado no sistema.",
+          description: "Este administrador já está cadastrado. Tente fazer o login.",
         })
       } else {
         toast({
@@ -149,19 +151,33 @@ export default function LoginPage() {
                 <span className="w-full border-t" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-background px-2 text-muted-foreground">Primeiro Acesso?</span>
+                <span className="bg-background px-2 text-muted-foreground">Configuração de Teste</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 w-full mb-2">
+              <div className="space-y-1">
+                <Label className="text-[10px]">Cidade Teste</Label>
+                <Input className="h-7 text-xs" value={targetCity} onChange={e => setTargetCity(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px]">Cód. IBGE</Label>
+                <Input className="h-7 text-xs" value={targetIbge} onChange={e => setTargetIbge(e.target.value)} />
               </div>
             </div>
 
             <Button 
               type="button" 
               variant="outline" 
-              className="w-full gap-2 border-dashed"
+              className="w-full gap-2 border-dashed h-12"
               onClick={handleSeedAdmin}
               disabled={loading || seeding}
             >
               {seeding ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-              Criar Administrador Geral
+              <div className="text-left">
+                <p className="text-xs font-bold leading-none">Criar Admin & Vincular Cidade</p>
+                <p className="text-[10px] text-muted-foreground">Vínculo necessário para salvar dados</p>
+              </div>
             </Button>
 
             <Link href="/" className="text-xs text-muted-foreground hover:underline mt-2">
@@ -171,7 +187,7 @@ export default function LoginPage() {
         </form>
       </Card>
       <p className="mt-8 text-xs text-muted-foreground max-w-xs text-center">
-        O botão de "Criar Administrador" é um recurso de configuração inicial para o e-mail mestre solicitado.
+        O sistema multi-município requer que seu usuário esteja vinculado a um Código IBGE válido para processar os dados do Censo e Despesas.
       </p>
     </div>
   )
