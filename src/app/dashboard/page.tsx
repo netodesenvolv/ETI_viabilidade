@@ -29,7 +29,8 @@ export default function DashboardPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [report, setReport] = useState<string | null>(null);
   const [filterLocalizacao, setFilterLocalizacao] = useState<string>("todas");
-  const [filterDependencia, setFilterDependencia] = useState<string>("todas");
+  // Filtro de rede agora padrão para Municipal ('3')
+  const [filterDependencia, setFilterDependencia] = useState<string>("3");
 
   const auth = useAuth();
   const db = useFirestore();
@@ -49,9 +50,9 @@ export default function DashboardPage() {
   const { analysis, stats } = useMemo(() => {
     if (!schools || schools.length === 0) return { analysis: [], stats: null };
 
+    // Filtro Central: Apenas escolas municipais entram no cálculo de rede
     const filteredSchools = schools.filter(s => {
       const matchesLocalizacao = filterLocalizacao === "todas" ? true : String(s.localizacao).toLowerCase() === filterLocalizacao.toLowerCase();
-      // Garantir que a comparação de dependência seja robusta contra tipos
       const matchesDependencia = filterDependencia === "todas" ? true : String(s.tp_dependencia).trim() === filterDependencia;
       return matchesLocalizacao && matchesDependencia;
     });
@@ -167,27 +168,12 @@ export default function DashboardPage() {
     );
   }
 
-  if (!schools || schools.length === 0) {
-    return (
-      <div className="h-[60vh] flex flex-col items-center justify-center text-center p-8 space-y-4">
-        <AlertCircle className="h-12 w-12 text-muted-foreground/30" />
-        <h3 className="text-xl font-bold">Nenhuma escola encontrada</h3>
-        <p className="text-muted-foreground max-w-xs">
-          Parece que ainda não foram consolidados dados do Censo Escolar para o município de {profile?.municipio}.
-        </p>
-        <Button asChild variant="outline">
-          <a href="/dashboard/censo">Ir para Censo Escolar</a>
-        </Button>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-headline font-bold text-primary">Diagnóstico: {profile?.municipio}</h2>
-          <p className="text-muted-foreground">Visão geral do exercício fiscal 2026</p>
+          <p className="text-muted-foreground">Visão geral do exercício fiscal 2026 (Rede Municipal)</p>
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
@@ -214,33 +200,28 @@ export default function DashboardPage() {
                 <SelectValue placeholder="Dependência" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="todas">Todas</SelectItem>
+                <SelectItem value="3">Municipal (Padrão)</SelectItem>
                 <SelectItem value="1">Federal</SelectItem>
                 <SelectItem value="2">Estadual</SelectItem>
-                <SelectItem value="3">Municipal</SelectItem>
                 <SelectItem value="4">Privada</SelectItem>
+                <SelectItem value="todas">Todas</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
-          <div className="h-8 w-px bg-border hidden lg:block" />
-
-          <Button variant="outline" size="sm" className="gap-2">
-            <Download className="h-4 w-4" /> Exportar PDF
-          </Button>
           <Button onClick={handleGenerateReport} disabled={isGenerating} size="sm" className="gap-2 bg-accent hover:bg-accent/90">
             <Sparkles className="h-4 w-4" /> 
-            {isGenerating ? "Gerando Relatório..." : "Análise IA"}
+            {isGenerating ? "Analisando..." : "Análise IA"}
           </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard 
-          title="Matrículas Filtradas" 
+          title="Matrículas Municipais" 
           value={stats?.totalMatriculasRede.toLocaleString() || "0"} 
           icon={Users}
-          subtitle="Critérios de filtro ativos"
+          subtitle="Apenas rede própria"
         />
         <KPICard 
           title="Alunos em ETI" 
@@ -249,7 +230,7 @@ export default function DashboardPage() {
           subtitle={`${stats?.totalETIRede} alunos em tempo integral`}
         />
         <KPICard 
-          title="Saldo do Grupo" 
+          title="Saldo da Rede" 
           value={`R$ ${((stats?.totalSaldo || 0) / 1000).toFixed(1)}k`} 
           icon={DollarSign}
           subtitle={stats?.totalSaldo! >= 0 ? "Superávit projetado" : "Déficit projetado"}
@@ -259,7 +240,7 @@ export default function DashboardPage() {
           title="Escolas em Déficit" 
           value={stats?.deficitCount || 0} 
           icon={AlertCircle}
-          subtitle={`De ${analysis.length} unidades filtradas`}
+          subtitle={`De ${analysis.length} unidades municipais`}
           className={stats?.deficitCount! > 0 ? "bg-orange-50/50" : ""}
         />
       </div>
@@ -267,9 +248,9 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="font-headline">Diagnóstico por Escola</CardTitle>
+            <CardTitle className="font-headline text-lg">Diagnóstico por Escola</CardTitle>
             <CardDescription>
-              Resultados financeiros detalhados por unidade dentro dos filtros selecionados
+              Filtro atual: {filterDependencia === '3' ? 'Rede Municipal' : 'Rede Customizada'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -292,12 +273,12 @@ export default function DashboardPage() {
                         <div className="text-[10px] text-muted-foreground uppercase flex gap-2">
                           <span className="font-bold">{String(school.localizacao).toUpperCase()}</span>
                           <span>•</span>
-                          <span>{DEPENDENCIA_LABELS[String(school.tp_dependencia)] || "Dependência " + school.tp_dependencia}</span>
+                          <span>{DEPENDENCIA_LABELS[String(school.tp_dependencia)] || school.tp_dependencia}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-right">R$ {school.receitaAluno.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
-                      <TableCell className="text-right">R$ {school.custoAluno.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
-                      <TableCell className="text-right">{school.percentual_eti || 0}%</TableCell>
+                      <TableCell className="text-right text-xs">R$ {school.receitaAluno.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                      <TableCell className="text-right text-xs">R$ {school.custoAluno.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                      <TableCell className="text-right text-xs font-bold">{school.percentual_eti || 0}%</TableCell>
                       <TableCell>
                         <Badge variant={school.status === 'superavit' ? 'default' : school.status === 'deficit' ? 'destructive' : 'secondary'} className={school.status === 'superavit' ? 'bg-green-600' : ''}>
                           {school.status.toUpperCase()}
@@ -319,24 +300,23 @@ export default function DashboardPage() {
 
         <Card className="flex flex-col">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 font-headline">
+            <CardTitle className="flex items-center gap-2 font-headline text-lg">
               <Sparkles className="h-5 w-5 text-accent" />
-              Relatório Executivo
+              Relatório IA
             </CardTitle>
-            <CardDescription>Análise narrativa gerada por IA</CardDescription>
           </CardHeader>
           <CardContent className="flex-1">
             {report ? (
               <ScrollArea className="h-[400px] pr-4">
-                <div className="text-sm space-y-4 whitespace-pre-wrap font-body leading-relaxed">
+                <div className="text-xs space-y-4 whitespace-pre-wrap font-body leading-relaxed">
                   {report}
                 </div>
               </ScrollArea>
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-4 border-2 border-dashed rounded-lg">
-                <FileText className="h-12 w-12 text-muted-foreground/30" />
-                <p className="text-muted-foreground text-sm">
-                  {isGenerating ? "Nossa IA está analisando os microdados financeiros..." : "Clique em 'Análise IA' para gerar o diagnóstico narrativo da rede filtrada."}
+                <FileText className="h-10 w-10 text-muted-foreground/30" />
+                <p className="text-muted-foreground text-xs">
+                  {isGenerating ? "Processando microdados..." : "Gere o diagnóstico narrativo da rede municipal."}
                 </p>
                 {!isGenerating && <Button onClick={handleGenerateReport} size="sm" disabled={analysis.length === 0}>Gerar Agora</Button>}
               </div>

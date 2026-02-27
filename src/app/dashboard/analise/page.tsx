@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useMemo } from "react";
@@ -44,9 +45,11 @@ export default function AnaliseCustoAlunoPage() {
   const analysisData = useMemo(() => {
     if (!schools) return [];
 
-    const totalMatriculasRede = schools.reduce((acc, s: any) => acc + (s.total_matriculas || 0), 0);
+    // FILTRO CENTRAL: Apenas rede municipal ('3')
+    const municipalSchools = schools.filter(s => String(s.tp_dependencia) === '3');
+    const totalMatriculasRede = municipalSchools.reduce((acc, s: any) => acc + (s.total_matriculas || 0), 0);
 
-    return schools.map((school: any) => {
+    return municipalSchools.map((school: any) => {
       const schoolExpenses = (expenses || []).filter((e: any) => e.schoolId === school.id);
       const totalDespesaReal = schoolExpenses.reduce((acc, e: any) => acc + (e.value || 0), 0);
 
@@ -109,7 +112,7 @@ export default function AnaliseCustoAlunoPage() {
     return (
       <div className="h-[60vh] flex flex-col items-center justify-center gap-4">
         <Loader2 className="h-10 w-10 animate-spin text-primary opacity-20" />
-        <p className="text-muted-foreground">Processando análise custo-aluno...</p>
+        <p className="text-muted-foreground">Processando análise custo-aluno municipal...</p>
       </div>
     );
   }
@@ -129,13 +132,13 @@ export default function AnaliseCustoAlunoPage() {
     <div className="space-y-6 animate-in fade-in duration-500">
       <div>
         <h2 className="text-3xl font-headline font-bold text-primary">Análise Custo-Aluno: {profile?.municipio}</h2>
-        <p className="text-muted-foreground">Comparativo real entre repasses recebidos e custos operacionais por unidade</p>
+        <p className="text-muted-foreground">Exclusivo: Comparativo Financeiro da Rede Municipal de Ensino</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="border-none shadow-sm bg-white">
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-bold text-muted-foreground uppercase">Média Receita/Aluno</CardTitle>
+            <CardTitle className="text-xs font-bold text-muted-foreground uppercase">Média Receita/Aluno (Rede)</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">R$ {networkStats?.avgReceita.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) || "0"}</div>
@@ -147,12 +150,12 @@ export default function AnaliseCustoAlunoPage() {
 
         <Card className="border-none shadow-sm bg-white">
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-bold text-muted-foreground uppercase">Média Custo/Aluno</CardTitle>
+            <CardTitle className="text-xs font-bold text-muted-foreground uppercase">Média Custo/Aluno (Rede)</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">R$ {networkStats?.avgCusto.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) || "0"}</div>
             <div className="flex items-center gap-1 text-orange-600 text-xs mt-1">
-              <Calculator className="h-3 w-3" /> Despesas Consolidadas
+              <Calculator className="h-3 w-3" /> Custos Operacionais
             </div>
           </CardContent>
         </Card>
@@ -165,18 +168,18 @@ export default function AnaliseCustoAlunoPage() {
             <div className={`text-2xl font-bold ${networkStats && networkStats.sustentabilidadeMedia >= 100 ? 'text-green-600' : 'text-destructive'}`}>
               {networkStats?.sustentabilidadeMedia.toFixed(1)}%
             </div>
-            <p className="text-[10px] text-muted-foreground mt-1">Meta Ideal: {'>'} 105%</p>
+            <p className="text-[10px] text-muted-foreground mt-1">Ideal Municipal: {'>'} 105%</p>
           </CardContent>
         </Card>
 
         <Card className="border-none shadow-sm bg-white">
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-bold text-muted-foreground uppercase">Escolas Sob Alerta</CardTitle>
+            <CardTitle className="text-xs font-bold text-muted-foreground uppercase">Déficit Operacional</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-destructive">{networkStats?.atRisk || 0}</div>
             <div className="flex items-center gap-1 text-destructive text-xs mt-1">
-              <AlertTriangle className="h-3 w-3" /> Déficit operacional
+              <AlertTriangle className="h-3 w-3" /> Unidades deficitárias
             </div>
           </CardContent>
         </Card>
@@ -185,8 +188,8 @@ export default function AnaliseCustoAlunoPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="text-lg">Divergência Financeira por Unidade</CardTitle>
-            <CardDescription>Comparação direta entre receita e custo anual por matrícula</CardDescription>
+            <CardTitle className="text-lg">Divergência Financeira por Unidade Municipal</CardTitle>
+            <CardDescription>Escolas da rede municipal em {profile?.municipio}</CardDescription>
           </CardHeader>
           <CardContent className="h-[400px]">
             <ChartContainer config={chartConfig}>
@@ -205,89 +208,25 @@ export default function AnaliseCustoAlunoPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Fatores de Risco</CardTitle>
-            <CardDescription>Análise da variabilidade de custos</CardDescription>
+            <CardTitle className="text-lg">Critérios de Análise</CardTitle>
+            <CardDescription>Rede Municipal</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex gap-3 p-3 bg-muted/50 rounded-lg">
-              <TrendingDown className="h-5 w-5 text-primary shrink-0" />
-              <div>
-                <p className="text-xs font-bold">Ganho de Escala</p>
-                <p className="text-[11px] text-muted-foreground">Unidades com baixo quociente de matrículas tendem a ter custo fixo superior.</p>
-              </div>
-            </div>
-            <div className="flex gap-3 p-3 bg-muted/50 rounded-lg">
-              <TrendingUp className="h-5 w-5 text-accent shrink-0" />
-              <div>
-                <p className="text-xs font-bold">Impacto do ETI</p>
-                <p className="text-[11px] text-muted-foreground">O custo aluno-ETI exige maior aporte de recursos próprios além do VAAf.</p>
-              </div>
-            </div>
+             <div className="p-3 bg-muted/50 rounded-xl space-y-2">
+                <p className="text-xs font-bold text-primary uppercase">Segmentação</p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                   Apenas unidades com Dependência Municipal (3) são incluídas nesta análise. Unidades estaduais e federais possuem orçamentos e repasses distintos.
+                </p>
+             </div>
+             <div className="p-3 bg-muted/50 rounded-xl space-y-2">
+                <p className="text-xs font-bold text-accent uppercase">Base de Repasse</p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                   Considera VAAf-Base Municipal, VAAT Estimado da Prefeitura e PNAE ajustado para 2026.
+                </p>
+             </div>
           </CardContent>
         </Card>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Ranking de Eficiência Financeira</CardTitle>
-          <CardDescription>Relação Receita vs Custo por unidade escolar</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Unidade Escolar</TableHead>
-                <TableHead className="text-right">Receita/Al.</TableHead>
-                <TableHead className="text-right">Custo/Al.</TableHead>
-                <TableHead className="text-right">Saldo/Al.</TableHead>
-                <TableHead className="text-right">Sustentabilidade</TableHead>
-                <TableHead className="text-right">Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {analysisData.sort((a, b) => a.sustentabilidade - b.sustentabilidade).map((item) => (
-                <TableRow key={item.inep}>
-                  <TableCell>
-                    <div className="font-medium text-sm">{item.name}</div>
-                    <div className="text-[10px] text-muted-foreground">INEP: {item.inep} • {item.eti}% ETI</div>
-                  </TableCell>
-                  <TableCell className="text-right font-mono text-sm">R$ {item.receita.toLocaleString('pt-BR')}</TableCell>
-                  <TableCell className="text-right font-mono text-sm">R$ {item.custo.toLocaleString('pt-BR')}</TableCell>
-                  <TableCell className={`text-right font-mono text-sm font-bold ${item.saldo >= 0 ? 'text-green-600' : 'text-destructive'}`}>
-                    R$ {item.saldo.toLocaleString('pt-BR')}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex flex-col items-end gap-1">
-                      <span className="text-xs font-bold">{item.sustentabilidade}%</span>
-                      <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
-                        <div 
-                          className={`h-full ${item.status === 'superavit' ? 'bg-green-500' : item.status === 'neutro' ? 'bg-orange-400' : 'bg-destructive'}`}
-                          style={{ width: `${Math.min(item.sustentabilidade, 100)}%` }}
-                        />
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {item.status === 'superavit' ? (
-                      <Badge className="bg-green-100 text-green-700 hover:bg-green-100 border-green-200">
-                        <CheckCircle2 className="h-3 w-3 mr-1" /> Sustentável
-                      </Badge>
-                    ) : item.status === 'neutro' ? (
-                      <Badge variant="secondary" className="bg-orange-50 text-orange-700 border-orange-200">
-                        Equilibrado
-                      </Badge>
-                    ) : (
-                      <Badge variant="destructive" className="bg-red-50 text-destructive border-red-200">
-                        Déficit
-                      </Badge>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
     </div>
   );
 }

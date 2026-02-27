@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useMemo } from "react";
@@ -6,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFoo
 import { DEFAULT_PARAMETERS } from "@/lib/constants";
 import { calcularVAAF, calcularVAAT, calcularPNAE, calcularMDE, calcularOutros } from "@/lib/calculations";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, Info, Loader2, AlertCircle } from "lucide-react";
+import { TrendingUp, Info, Loader2, AlertCircle, MapPin } from "lucide-react";
 import { useAuth, useFirestore, useUser, useDoc, useCollection } from "@/firebase";
 import { doc, collection } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
@@ -30,9 +31,11 @@ export default function ReceitasPage() {
   const { schoolsRevenue, totals } = useMemo(() => {
     if (!schools || schools.length === 0) return { schoolsRevenue: [], totals: null };
 
-    const totalMatriculasRede = schools.reduce((acc, s: any) => acc + (s.total_matriculas || 0), 0);
+    // FILTRO CENTRAL: Apenas escolas da rede municipal ('3') geram receita para o município
+    const municipalSchools = schools.filter(s => String(s.tp_dependencia) === '3');
+    const totalMatriculasRede = municipalSchools.reduce((acc, s: any) => acc + (s.total_matriculas || 0), 0);
 
-    const revenueList = schools.map((school: any) => {
+    const revenueList = municipalSchools.map((school: any) => {
       const schoolMatriculas = school.matriculas || {
         creche_integral: 0, creche_parcial: 0, creche_conveniada_int: 0, creche_conveniada_par: 0,
         pre_integral: 0, pre_parcial: 0, ef_ai_integral: 0, ef_ai_parcial: 0, ef_af_integral: 0, ef_af_parcial: 0,
@@ -73,13 +76,13 @@ export default function ReceitasPage() {
     );
   }
 
-  if (!schools || schools.length === 0) {
+  if (!schoolsRevenue || schoolsRevenue.length === 0) {
     return (
       <div className="h-[60vh] flex flex-col items-center justify-center text-center p-8 space-y-4">
         <AlertCircle className="h-12 w-12 text-muted-foreground/30" />
-        <h3 className="text-xl font-bold">Nenhuma escola cadastrada</h3>
+        <h3 className="text-xl font-bold">Nenhuma escola municipal encontrada</h3>
         <p className="text-muted-foreground max-w-xs">
-          Importe os dados do Censo Escolar para visualizar as receitas estimadas do município.
+          O cálculo de receitas exige a presença de escolas vinculadas à Rede Municipal (Dependência 3).
         </p>
         <Button asChild variant="outline">
           <a href="/dashboard/censo">Ir para Censo Escolar</a>
@@ -90,48 +93,53 @@ export default function ReceitasPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl font-headline font-bold text-primary">Mapa de Receitas: {profile?.municipio}</h2>
-        <p className="text-muted-foreground">Cálculo detalhado de repasses por fonte e unidade escolar</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-3xl font-headline font-bold text-primary">Mapa de Receitas: {profile?.municipio}</h2>
+          <p className="text-muted-foreground">Exclusivo: Rede Municipal de Ensino</p>
+        </div>
+        <Badge variant="outline" className="py-1 gap-2 border-primary/20 bg-primary/5 text-primary">
+          <MapPin className="h-3 w-3" /> Exercício 2026
+        </Badge>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="bg-primary text-white">
+        <Card className="bg-primary text-white border-none shadow-lg">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-white/70">Receita Total Estimada</CardTitle>
+            <CardTitle className="text-sm font-medium text-white/70 uppercase">Receita Municipal Total</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">R$ {totals?.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-            <p className="text-xs text-white/60 mt-1">Exercício 2026</p>
+            <p className="text-xs text-white/60 mt-1">Estimativa de repasses anuais</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-none shadow-md">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">FUNDEB VAAF</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase">FUNDEB VAAF</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">R$ {totals?.vaaf.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</div>
-            <p className="text-xs text-muted-foreground mt-1">{(totals && totals.total > 0 ? ((totals.vaaf / totals.total) * 100) : 0).toFixed(1)}% do total</p>
+            <p className="text-xs text-muted-foreground mt-1">{(totals && totals.total > 0 ? ((totals.vaaf / totals.total) * 100) : 0).toFixed(1)}% do aporte total</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-none shadow-md">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Repasse VAAT</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase">Repasse VAAT</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">R$ {totals?.vaat.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</div>
-            <p className="text-xs text-muted-foreground mt-1">Complementação Federal</p>
+            <p className="text-xs text-muted-foreground mt-1">VAAT estimado para {schoolsRevenue.length} unidades</p>
           </CardContent>
         </Card>
       </div>
 
-      <Card>
+      <Card className="border-none shadow-md">
         <CardHeader>
-          <CardTitle className="text-lg">Detalhamento por Escola</CardTitle>
-          <CardDescription>Valores calculados com base nos parâmetros atuais do município</CardDescription>
+          <CardTitle className="text-lg">Detalhamento por Unidade Municipal</CardTitle>
+          <CardDescription>Cálculos baseados em matrículas municipais do censo</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="rounded-lg border">
+          <div className="rounded-xl border overflow-hidden">
             <Table>
               <TableHeader className="bg-muted/50">
                 <TableRow>
@@ -146,18 +154,18 @@ export default function ReceitasPage() {
               <TableBody>
                 {schoolsRevenue.map((school) => (
                   <TableRow key={school.id}>
-                    <TableCell className="font-medium">{school.nome}</TableCell>
-                    <TableCell className="text-right">R$ {school.vaaf.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
-                    <TableCell className="text-right">R$ {school.vaat.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
-                    <TableCell className="text-right">R$ {school.pnae.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
-                    <TableCell className="text-right">R$ {school.mde.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
-                    <TableCell className="text-right font-bold text-primary">R$ {school.total.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                    <TableCell className="font-medium text-sm">{school.nome}</TableCell>
+                    <TableCell className="text-right text-xs">R$ {school.vaaf.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                    <TableCell className="text-right text-xs">R$ {school.vaat.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                    <TableCell className="text-right text-xs">R$ {school.pnae.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                    <TableCell className="text-right text-xs">R$ {school.mde.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                    <TableCell className="text-right font-bold text-primary text-sm">R$ {school.total.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
-              <TableFooter>
+              <TableFooter className="bg-primary/5">
                 <TableRow className="font-bold">
-                  <TableCell>Totais da Rede</TableCell>
+                  <TableCell>Total Rede Municipal</TableCell>
                   <TableCell className="text-right">R$ {totals?.vaaf.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
                   <TableCell className="text-right">R$ {totals?.vaat.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
                   <TableCell className="text-right">R$ {totals?.pnae.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
@@ -168,11 +176,10 @@ export default function ReceitasPage() {
             </Table>
           </div>
 
-          <div className="mt-6 p-4 bg-muted/30 rounded-lg flex gap-3 text-sm text-muted-foreground">
-            <Info className="h-5 w-5 shrink-0 text-primary" />
+          <div className="mt-6 p-4 bg-blue-50/50 border border-blue-100 rounded-xl flex gap-3 text-sm text-blue-800">
+            <Info className="h-5 w-5 shrink-0 text-blue-600" />
             <p>
-              Os cálculos consideram as matrículas consolidadas no Módulo de Censo Escolar e os parâmetros definidos para 2026. 
-              O MDE Líquido é distribuído proporcionalmente ao total de matrículas de cada unidade.
+              Esta visualização considera exclusivamente a **Rede Municipal (Dependência 3)**. Escolas federais, estaduais ou privadas situadas no território não são computadas nas receitas geridas pela prefeitura.
             </p>
           </div>
         </CardContent>
