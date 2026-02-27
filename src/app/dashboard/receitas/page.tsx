@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFoo
 import { DEFAULT_PARAMETERS } from "@/lib/constants";
 import { calcularVAAF, calcularVAAT, calcularPNAE, calcularMDE, calcularOutros } from "@/lib/calculations";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, Info, Loader2, AlertCircle, MapPin } from "lucide-react";
+import { TrendingUp, Info, Loader2, AlertCircle, MapPin, Calculator } from "lucide-react";
 import { useAuth, useFirestore, useUser, useDoc, useCollection } from "@/firebase";
 import { doc, collection } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
@@ -36,7 +36,7 @@ export default function ReceitasPage() {
     const totalMatriculasRede = municipalSchools.reduce((acc, s: any) => acc + (s.total_matriculas || 0), 0);
 
     const revenueList = municipalSchools.map((school: any) => {
-      // Garante objeto de matrículas para evitar erros de undefined no cálculo
+      // Garante objeto de matrículas granular para o cálculo
       const schoolMatriculas = school.matriculas || {
         creche_integral: 0, creche_parcial: 0, creche_conveniada_int: 0, creche_conveniada_par: 0,
         pre_integral: 0, pre_parcial: 0, ef_ai_integral: 0, ef_ai_parcial: 0, ef_af_integral: 0, ef_af_parcial: 0,
@@ -72,7 +72,7 @@ export default function ReceitasPage() {
     return (
       <div className="h-[60vh] flex flex-col items-center justify-center gap-4">
         <Loader2 className="h-10 w-10 animate-spin text-primary opacity-20" />
-        <p className="text-muted-foreground">Carregando mapa de receitas...</p>
+        <p className="text-muted-foreground">Carregando mapa de receitas granulares...</p>
       </div>
     );
   }
@@ -83,7 +83,7 @@ export default function ReceitasPage() {
         <AlertCircle className="h-12 w-12 text-muted-foreground/30" />
         <h3 className="text-xl font-bold">Nenhuma escola municipal encontrada</h3>
         <p className="text-muted-foreground max-w-xs">
-          O cálculo de receitas exige a presença de escolas vinculadas à Rede Municipal (Dependência 3).
+          O cálculo de receitas exige a presença de microdados de matrículas vinculados à Rede Municipal (Dependência 3).
         </p>
         <Button asChild variant="outline">
           <a href="/dashboard/censo">Ir para Censo Escolar</a>
@@ -97,10 +97,10 @@ export default function ReceitasPage() {
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-3xl font-headline font-bold text-primary">Mapa de Receitas: {profile?.municipio}</h2>
-          <p className="text-muted-foreground">Exclusivo: Rede Municipal de Ensino</p>
+          <p className="text-muted-foreground">Cálculo Granular: Repasses baseados em tipos de matrícula (Exclusivo Rede Municipal)</p>
         </div>
         <Badge variant="outline" className="py-1 gap-2 border-primary/20 bg-primary/5 text-primary">
-          <MapPin className="h-3 w-3" /> Exercício 2026
+          <Calculator className="h-3 w-3" /> Exercício 2026
         </Badge>
       </div>
 
@@ -111,56 +111,61 @@ export default function ReceitasPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">R$ {totals?.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-            <p className="text-xs text-white/60 mt-1">Estimativa de repasses anuais</p>
+            <p className="text-xs text-white/60 mt-1">Estimativa cruzada com fatores VAAf</p>
           </CardContent>
         </Card>
         <Card className="border-none shadow-md">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase">FUNDEB VAAF</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase">FUNDEB VAAF (Granular)</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">R$ {totals?.vaaf.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</div>
-            <p className="text-xs text-muted-foreground mt-1">{(totals && totals.total > 0 ? ((totals.vaaf / totals.total) * 100) : 0).toFixed(1)}% do aporte total</p>
+            <p className="text-xs text-muted-foreground mt-1">Calculado por etapa e modalidade</p>
           </CardContent>
         </Card>
         <Card className="border-none shadow-md">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase">Repasse PNAE</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase">Repasse PNAE (Padrão ETI)</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">R$ {totals?.pnae.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</div>
-            <p className="text-xs text-muted-foreground mt-1">Alimentação Escolar baseada em matrículas</p>
+            <p className="text-xs text-muted-foreground mt-1">Reflete acréscimo de alunos integrais</p>
           </CardContent>
         </Card>
       </div>
 
       <Card className="border-none shadow-md">
         <CardHeader>
-          <CardTitle className="text-lg">Detalhamento por Unidade Municipal</CardTitle>
-          <CardDescription>Cálculos baseados em parâmetros VAAf e PNAE 2026</CardDescription>
+          <CardTitle className="text-lg">Detalhamento Financeiro por Unidade</CardTitle>
+          <CardDescription>Cálculos resultantes do cruzamento de Microdados do Censo vs Parâmetros Municipais</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="rounded-xl border overflow-hidden">
             <Table>
               <TableHeader className="bg-muted/50">
                 <TableRow>
-                  <TableHead>Escola</TableHead>
-                  <TableHead className="text-right">VAAF (Fundeb)</TableHead>
-                  <TableHead className="text-right">VAAT (Complemento)</TableHead>
-                  <TableHead className="text-right">PNAE (Alimento)</TableHead>
-                  <TableHead className="text-right">MDE Líq.</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead>Escola Municipal</TableHead>
+                  <TableHead className="text-right">VAAF (Ponderado)</TableHead>
+                  <TableHead className="text-right">VAAT (Proporcional)</TableHead>
+                  <TableHead className="text-right">PNAE (Consumo)</TableHead>
+                  <TableHead className="text-right">Total Receita</TableHead>
+                  <TableHead className="text-right">Receita/Aluno</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {schoolsRevenue.map((school) => (
                   <TableRow key={school.id}>
-                    <TableCell className="font-medium text-sm">{school.nome}</TableCell>
+                    <TableCell>
+                      <div className="font-medium text-sm">{school.nome}</div>
+                      <div className="text-[10px] text-muted-foreground uppercase">{school.total_matriculas} alunos</div>
+                    </TableCell>
                     <TableCell className="text-right text-xs">R$ {school.vaaf.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
                     <TableCell className="text-right text-xs">R$ {school.vaat.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
                     <TableCell className="text-right text-xs">R$ {school.pnae.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
-                    <TableCell className="text-right text-xs">R$ {school.mde.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
                     <TableCell className="text-right font-bold text-primary text-sm">R$ {school.total.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                    <TableCell className="text-right font-mono text-[10px] text-muted-foreground">
+                      R$ {(school.total / (school.total_matriculas || 1)).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -170,18 +175,21 @@ export default function ReceitasPage() {
                   <TableCell className="text-right">R$ {totals?.vaaf.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
                   <TableCell className="text-right">R$ {totals?.vaat.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
                   <TableCell className="text-right">R$ {totals?.pnae.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
-                  <TableCell className="text-right">R$ {totals?.mde.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
                   <TableCell className="text-right text-primary">R$ {totals?.total.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                  <TableCell></TableCell>
                 </TableRow>
               </TableFooter>
             </Table>
           </div>
 
-          <div className="mt-6 p-4 bg-blue-50/50 border border-blue-100 rounded-xl flex gap-3 text-sm text-blue-800">
-            <Info className="h-5 w-5 shrink-0 text-blue-600" />
-            <p>
-              Esta visualização considera exclusivamente a **Rede Municipal (Dependência 3)**. O cálculo reflete o **VAAf Base Municipal** e o **PNAE Ajustado** conforme os parâmetros de financiamento definidos para {profile?.municipio}.
-            </p>
+          <div className="mt-6 p-4 bg-muted/30 border rounded-xl flex gap-3 text-sm">
+            <Info className="h-5 w-5 shrink-0 text-primary" />
+            <div className="space-y-1">
+              <p className="font-bold">Como este valor é gerado?</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Cada unidade escolar tem sua receita calculada individualmente. O sistema soma a quantidade de alunos em cada modalidade (ex: Creche Integral, EF Parcial) e multiplica pelo fator de ponderação correspondente definido na página de **Parâmetros**, gerando o repasse VAAf real projetado.
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>

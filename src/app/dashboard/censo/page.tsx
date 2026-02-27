@@ -27,7 +27,20 @@ interface ParsedSchool {
   total_matriculas: number;
   total_eti: number;
   percentual_eti: number;
-  raw_data: Record<string, string>;
+  matriculas: {
+    creche_integral: number;
+    creche_parcial: number;
+    pre_integral: number;
+    pre_parcial: number;
+    ef_ai_integral: number;
+    ef_ai_parcial: number;
+    ef_af_integral: number;
+    ef_af_parcial: number;
+    eja_fundamental: number;
+    especial_aee: number;
+    indigena_quilombola: number;
+    campo_rural: number;
+  };
 }
 
 export default function CensoAdminPage() {
@@ -85,7 +98,22 @@ export default function CensoAdminPage() {
       if (!row.CO_ENTIDADE) continue;
       
       const total_matriculas = parseInt(row.QT_MAT_BAS || "0", 10);
-      const total_eti = parseInt(row.QT_MAT_INF_INT || "0", 10) + parseInt(row.QT_MAT_FUND_INT || "0", 10) + parseInt(row.QT_MAT_MED_INT || "0", 10);
+      
+      // Mapeamento granular de colunas padrão INEP Microdados
+      const creche_int = parseInt(row.QT_MAT_INF_CRE_INT || "0", 10);
+      const creche_par = parseInt(row.QT_MAT_INF_CRE_PARC || "0", 10);
+      const pre_int = parseInt(row.QT_MAT_INF_PRE_INT || "0", 10);
+      const pre_par = parseInt(row.QT_MAT_INF_PRE_PARC || "0", 10);
+      const ef_ai_int = parseInt(row.QT_MAT_FUND_AI_INT || "0", 10);
+      const ef_ai_par = parseInt(row.QT_MAT_FUND_AI_PARC || "0", 10);
+      const ef_af_int = parseInt(row.QT_MAT_FUND_AF_INT || "0", 10);
+      const ef_af_par = parseInt(row.QT_MAT_FUND_AF_PARC || "0", 10);
+      const eja = parseInt(row.QT_MAT_EJA || "0", 10);
+      const especial = parseInt(row.QT_MAT_ESP || "0", 10);
+      const indigena = parseInt(row.QT_MAT_IND_QUILO || "0", 10);
+      const campo = row.TP_LOCALIZACAO === "2" ? total_matriculas : 0;
+
+      const total_eti = creche_int + pre_int + ef_ai_int + ef_af_int;
       
       schools.push({
         id: row.CO_ENTIDADE,
@@ -98,7 +126,20 @@ export default function CensoAdminPage() {
         total_matriculas,
         total_eti,
         percentual_eti: total_matriculas > 0 ? Number(((total_eti / total_matriculas) * 100).toFixed(1)) : 0,
-        raw_data: row
+        matriculas: {
+          creche_integral: creche_int,
+          creche_parcial: creche_par,
+          pre_integral: pre_int,
+          pre_parcial: pre_par,
+          ef_ai_integral: ef_ai_int,
+          ef_ai_parcial: ef_ai_par,
+          ef_af_integral: ef_af_int,
+          ef_af_parcial: ef_af_par,
+          eja_fundamental: eja,
+          especial_aee: especial,
+          indigena_quilombola: indigena,
+          campo_rural: campo
+        }
       });
     }
     return schools;
@@ -138,6 +179,7 @@ export default function CensoAdminPage() {
           percentual_eti: school.percentual_eti,
           localizacao: school.localizacao.toLowerCase() === "rural" ? "rural" : "urbana",
           tp_dependencia: school.tp_dependencia,
+          matriculas: school.matriculas,
           updatedAt: new Date().toISOString()
         };
         return setDoc(schoolRef, data, { merge: true }).catch(async () => {
@@ -145,7 +187,7 @@ export default function CensoAdminPage() {
         });
       });
       await Promise.all(promises);
-      toast({ title: "Dados Consolidados", description: `${parsedSchools.length} escolas salvas.` });
+      toast({ title: "Dados Consolidados", description: `${parsedSchools.length} escolas salvas com microdados de matrícula.` });
       setStep(1); setParsedSchools([]); setFileName(null);
     } finally { setConsolidating(false); }
   };
@@ -191,11 +233,15 @@ export default function CensoAdminPage() {
               {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
               Carregar Dados
             </Button>
+            <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg">
+              <p className="text-[10px] text-blue-700 font-bold uppercase mb-1">Dica de Colunas</p>
+              <p className="text-[10px] text-blue-600 leading-tight">O CSV deve conter: CO_ENTIDADE, NO_ENTIDADE, QT_MAT_BAS e colunas de microdados (QT_MAT_INF_PRE_INT, etc.)</p>
+            </div>
           </CardContent>
         </Card>
 
         <Card className="lg:col-span-3">
-          <CardHeader><CardTitle className="text-lg">Visualização Prévia</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-lg">Visualização Prévia Granular</CardTitle></CardHeader>
           <CardContent>
             {step === 1 ? (
               <div className="h-[400px] flex flex-col items-center justify-center text-muted-foreground gap-4 border-2 border-dashed rounded-xl bg-muted/10 text-center p-8">
@@ -211,7 +257,8 @@ export default function CensoAdminPage() {
                         <TableRow>
                           <TableHead>INEP</TableHead>
                           <TableHead>Escola</TableHead>
-                          <TableHead className="text-right">Matrículas</TableHead>
+                          <TableHead className="text-right">Total Matrículas</TableHead>
+                          <TableHead className="text-right">Matrículas ETI</TableHead>
                           <TableHead className="text-right">% ETI</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -221,6 +268,7 @@ export default function CensoAdminPage() {
                             <TableCell className="font-mono text-xs">{school.codigo_inep}</TableCell>
                             <TableCell className="font-medium text-sm">{school.nome}</TableCell>
                             <TableCell className="text-right">{school.total_matriculas}</TableCell>
+                            <TableCell className="text-right text-primary font-medium">{school.total_eti}</TableCell>
                             <TableCell className="text-right font-bold">{school.percentual_eti}%</TableCell>
                           </TableRow>
                         ))}
@@ -232,7 +280,7 @@ export default function CensoAdminPage() {
                   <p className="text-green-800 font-bold text-sm flex items-center gap-2"><CheckCircle2 className="h-5 w-5" /> Salvar em {profile?.municipio}</p>
                   <Button onClick={handleConsolidate} disabled={consolidating || !municipioId} className="bg-green-700 hover:bg-green-800">
                     {consolidating && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                    Confirmar Consolidação
+                    Confirmar Consolidação Granular
                   </Button>
                 </div>
               </div>
