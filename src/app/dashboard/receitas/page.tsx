@@ -16,16 +16,13 @@ export default function ReceitasPage() {
   const db = useFirestore();
   const { user } = useUser(auth);
 
-  // Perfil e Município
   const userProfileRef = useMemo(() => (db && user ? doc(db, 'users', user.uid) : null), [db, user]);
   const { data: profile, loading: profileLoading } = useDoc(userProfileRef);
   const municipioId = profile?.municipioId;
 
-  // Escolas do Município
   const schoolsRef = useMemo(() => (db && municipioId ? collection(db, 'municipios', municipioId, 'schools') : null), [db, municipioId]);
   const { data: schools, loading: schoolsLoading } = useCollection(schoolsRef);
 
-  // Parâmetros de Financiamento
   const paramsRef = useMemo(() => (db && municipioId ? doc(db, 'municipios', municipioId, 'config', 'parameters') : null), [db, municipioId]);
   const { data: customParams } = useDoc(paramsRef);
   const parametros = (customParams as any) || DEFAULT_PARAMETERS;
@@ -44,7 +41,7 @@ export default function ReceitasPage() {
 
       const vaaf = calcularVAAF(schoolMatriculas, parametros);
       const vaat = calcularVAAT(school, parametros, totalMatriculasRede);
-      const pnae = calcularPNAE(school, parametros);
+      const pnae = calcularPNAE(schoolMatriculas, parametros);
       const mde = calcularMDE(school, parametros, totalMatriculasRede);
       const outros = calcularOutros(school, parametros, totalMatriculasRede);
       const total = vaaf + vaat + pnae + mde + outros;

@@ -13,7 +13,7 @@ import { generateExecutiveFinancialReport } from "@/ai/flows/generate-executive-
 import { useToast } from "@/hooks/use-toast";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth, useFirestore, useUser, useDoc, useCollection } from "@/firebase";
-import { doc, collection, query, where } from "firebase/firestore";
+import { doc, collection } from "firebase/firestore";
 
 export default function DashboardPage() {
   const { toast } = useToast();
@@ -24,30 +24,24 @@ export default function DashboardPage() {
   const db = useFirestore();
   const { user } = useUser(auth);
 
-  // Perfil do Usuário
   const userProfileRef = useMemo(() => (db && user ? doc(db, 'users', user.uid) : null), [db, user]);
   const { data: profile, loading: profileLoading } = useDoc(userProfileRef);
   const municipioId = profile?.municipioId;
 
-  // Escolas do Município
   const schoolsRef = useMemo(() => (db && municipioId ? collection(db, 'municipios', municipioId, 'schools') : null), [db, municipioId]);
   const { data: schools, loading: schoolsLoading } = useCollection(schoolsRef);
 
-  // Parâmetros de Financiamento
   const paramsRef = useMemo(() => (db && municipioId ? doc(db, 'municipios', municipioId, 'config', 'parameters') : null), [db, municipioId]);
   const { data: customParams } = useDoc(paramsRef);
   const parametros = (customParams as any) || DEFAULT_PARAMETERS;
 
-  // Cálculos Consolidados
   const { analysis, stats } = useMemo(() => {
     if (!schools || schools.length === 0) return { analysis: [], stats: null };
 
-    const totalMatriculasRede = schools.reduce((acc, s: any) => acc + s.total_matriculas, 0);
-    const totalETIRede = schools.reduce((acc, s: any) => acc + s.total_eti, 0);
+    const totalMatriculasRede = schools.reduce((acc, s: any) => acc + (s.total_matriculas || 0), 0);
+    const totalETIRede = schools.reduce((acc, s: any) => acc + (s.total_eti || 0), 0);
 
     const schoolAnalyses = schools.map((school: any) => {
-      // Nota: As matrículas no Firestore podem vir simplificadas ou completas. 
-      // Se não existirem, usamos 0.
       const schoolMatriculas = school.matriculas || {
         creche_integral: 0, creche_parcial: 0, creche_conveniada_int: 0, creche_conveniada_par: 0,
         pre_integral: 0, pre_parcial: 0, ef_ai_integral: 0, ef_ai_parcial: 0, ef_af_integral: 0, ef_af_parcial: 0,
@@ -56,17 +50,16 @@ export default function DashboardPage() {
 
       const vaaf = calcularVAAF(schoolMatriculas, parametros);
       const vaat = calcularVAAT(school, parametros, totalMatriculasRede);
-      const pnae = calcularPNAE(school, parametros);
+      const pnae = calcularPNAE(schoolMatriculas, parametros);
       const mde = calcularMDE(school, parametros, totalMatriculasRede);
       const outros = calcularOutros(school, parametros, totalMatriculasRede);
       
       const receitaTotal = vaaf + vaat + pnae + mde + outros;
-      // Custo simulado se não houver lançamento real (92% da receita em média)
       const despesaTotal = school.total_despesa || (receitaTotal * 0.92);
       const saldo = receitaTotal - despesaTotal;
       const cobertura = despesaTotal > 0 ? receitaTotal / despesaTotal : 1;
-      const custoAluno = school.total_matriculas > 0 ? despesaTotal / school.total_matriculas : 0;
-      const receitaAluno = school.total_matriculas > 0 ? receitaTotal / school.total_matriculas : 0;
+      const custoAluno = (school.total_matriculas || 0) > 0 ? despesaTotal / school.total_matriculas : 0;
+      const receitaAluno = (school.total_matriculas || 0) > 0 ? receitaTotal / school.total_matriculas : 0;
 
       let status: 'superavit' | 'neutro' | 'deficit' = 'superavit';
       if (cobertura <= 0.95) status = 'deficit';
@@ -94,7 +87,7 @@ export default function DashboardPage() {
       stats: {
         totalMatriculasRede,
         totalETIRede,
-        percentualETI: (totalETIRede / totalMatriculasRede) * 100,
+        percentualETI: totalMatriculasRede > 0 ? (totalETIRede / totalMatriculasRede) * 100 : 0,
         totalSaldo,
         deficitCount,
         avgCusto,
@@ -109,7 +102,7 @@ export default function DashboardPage() {
     try {
       const input = {
         municipio: profile?.municipio || "Município",
-        uf: "MG", // Idealmente viria do perfil
+        uf: profile?.uf || "BA",
         exercicio: 2026,
         totalMatriculas: stats.totalMatriculasRede,
         totalETI: stats.totalETIRede,
@@ -120,7 +113,7 @@ export default function DashboardPage() {
         saldoStatus: stats.totalSaldo >= 0 ? "superávit" : "déficit",
         escolasEmDeficit: stats.deficitCount,
         totalEscolas: schools?.length || 0,
-        escolasETIlt20Percent: analysis.filter(s => s.percentual_eti < 20).length,
+        escolasETIlt20Percent: analysis.filter(s => (s.percentual_eti || 0) < 20).length,
         composicaoReceitas: {
           fundebVaaf: { amount: Math.round(stats.totalMatriculasRede * parametros.vaaf_base * 0.7), percentage: 70 },
           vaat: { amount: Math.round(parametros.vaat_total_rede), percentage: 15 },
@@ -241,7 +234,7 @@ export default function DashboardPage() {
                     <TableCell className="font-medium">{school.nome}</TableCell>
                     <TableCell className="text-right">R$ {school.receitaAluno.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
                     <TableCell className="text-right">R$ {school.custoAluno.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
-                    <TableCell className="text-right">{school.percentual_eti}%</TableCell>
+                    <TableCell className="text-right">{school.percentual_eti || 0}%</TableCell>
                     <TableCell>
                       <Badge variant={school.status === 'superavit' ? 'default' : school.status === 'deficit' ? 'destructive' : 'secondary'} className={school.status === 'superavit' ? 'bg-green-600' : ''}>
                         {school.status.toUpperCase()}

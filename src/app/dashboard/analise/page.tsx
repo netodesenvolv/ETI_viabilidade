@@ -27,12 +27,10 @@ export default function AnaliseCustoAlunoPage() {
   const db = useFirestore();
   const { user } = useUser(auth);
 
-  // Perfil e Município
   const userProfileRef = useMemo(() => (db && user ? doc(db, 'users', user.uid) : null), [db, user]);
   const { data: profile, loading: profileLoading } = useDoc(userProfileRef);
   const municipioId = profile?.municipioId;
 
-  // Dados do Firestore
   const schoolsRef = useMemo(() => (db && municipioId ? collection(db, 'municipios', municipioId, 'schools') : null), [db, municipioId]);
   const { data: schools, loading: schoolsLoading } = useCollection(schoolsRef);
 
@@ -46,12 +44,11 @@ export default function AnaliseCustoAlunoPage() {
   const analysisData = useMemo(() => {
     if (!schools) return [];
 
-    const totalMatriculasRede = schools.reduce((acc, s: any) => acc + s.total_matriculas, 0);
+    const totalMatriculasRede = schools.reduce((acc, s: any) => acc + (s.total_matriculas || 0), 0);
 
     return schools.map((school: any) => {
-      // Agrupar despesas reais do banco para esta escola
       const schoolExpenses = (expenses || []).filter((e: any) => e.schoolId === school.id);
-      const totalDespesaReal = schoolExpenses.reduce((acc, e: any) => acc + e.value, 0);
+      const totalDespesaReal = schoolExpenses.reduce((acc, e: any) => acc + (e.value || 0), 0);
 
       const schoolMatriculas = school.matriculas || {
         creche_integral: 0, creche_parcial: 0, creche_conveniada_int: 0, creche_conveniada_par: 0,
@@ -59,22 +56,21 @@ export default function AnaliseCustoAlunoPage() {
         eja_fundamental: 0, eja_medio: 0, especial_aee: 0, indigena_quilombola: 0, campo_rural: 0
       };
 
-      // Receita
       const vaaf = calcularVAAF(schoolMatriculas, parametros);
       const vaat = calcularVAAT(school, parametros, totalMatriculasRede);
-      const pnae = calcularPNAE(school, parametros);
+      const pnae = calcularPNAE(schoolMatriculas, parametros);
       const mde = calcularMDE(school, parametros, totalMatriculasRede);
       const outros = calcularOutros(school, parametros, totalMatriculasRede);
       const receitaTotal = vaaf + vaat + pnae + mde + outros;
-      const receitaPorAluno = school.total_matriculas > 0 ? receitaTotal / school.total_matriculas : 0;
+      const totalMatriculas = school.total_matriculas || 0;
+      const receitaPorAluno = totalMatriculas > 0 ? receitaTotal / totalMatriculas : 0;
 
-      // Custo
-      // Se houver despesa real lançada, usamos ela. Caso contrário, usamos um custo estimado baseado em ETI.
       let custoPorAluno = 0;
-      if (totalDespesaReal > 0) {
-        custoPorAluno = totalDespesaReal / school.total_matriculas;
+      if (totalDespesaReal > 0 && totalMatriculas > 0) {
+        custoPorAluno = totalDespesaReal / totalMatriculas;
       } else {
-        const fatorETI = 1 + (school.percentual_eti / 100) * 0.45;
+        const percentualETI = school.percentual_eti || 0;
+        const fatorETI = 1 + (percentualETI / 100) * 0.45;
         const custoBase = 6400; 
         custoPorAluno = custoBase * fatorETI;
       }
@@ -88,7 +84,7 @@ export default function AnaliseCustoAlunoPage() {
         receita: Math.round(receitaPorAluno),
         custo: Math.round(custoPorAluno),
         saldo: Math.round(saldoPorAluno),
-        eti: school.percentual_eti,
+        eti: school.percentual_eti || 0,
         sustentabilidade: Math.round(sustentabilidade),
         status: sustentabilidade >= 105 ? 'superavit' : sustentabilidade >= 95 ? 'neutro' : 'deficit'
       };
@@ -105,7 +101,7 @@ export default function AnaliseCustoAlunoPage() {
       avgReceita,
       avgCusto,
       atRisk,
-      sustentabilidadeMedia: (avgReceita / avgCusto) * 100
+      sustentabilidadeMedia: avgCusto > 0 ? (avgReceita / avgCusto) * 100 : 0
     };
   }, [analysisData]);
 

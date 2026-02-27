@@ -31,16 +31,13 @@ export default function SimuladorETIPage() {
   const db = useFirestore();
   const { user } = useUser(auth);
 
-  // Perfil e Município
   const userProfileRef = useMemo(() => (db && user ? doc(db, 'users', user.uid) : null), [db, user]);
   const { data: profile, loading: profileLoading } = useDoc(userProfileRef);
   const municipioId = profile?.municipioId;
 
-  // Escolas do Município
   const schoolsRef = useMemo(() => (db && municipioId ? collection(db, 'municipios', municipioId, 'schools') : null), [db, municipioId]);
   const { data: schools, loading: schoolsLoading } = useCollection(schoolsRef);
 
-  // Parâmetros de Financiamento
   const paramsRef = useMemo(() => (db && municipioId ? doc(db, 'municipios', municipioId, 'config', 'parameters') : null), [db, municipioId]);
   const { data: customParams } = useDoc(paramsRef);
   const parametros = (customParams as any) || DEFAULT_PARAMETERS;
@@ -68,12 +65,10 @@ export default function SimuladorETIPage() {
       eja_fundamental: 0, eja_medio: 0, especial_aee: 0, indigena_quilombola: 0, campo_rural: 0
     };
 
-    // Cenário Atual
     const vaafAtual = calcularVAAF(schoolMatriculas, parametros);
-    const pnaeAtual = calcularPNAE(selectedSchool, parametros);
+    const pnaeAtual = calcularPNAE(schoolMatriculas, parametros);
     const receitaAtual = vaafAtual + pnaeAtual;
 
-    // Cenário Simulado
     const novasMatriculas = {
       ...schoolMatriculas,
       ef_ai_integral: (schoolMatriculas.ef_ai_integral || 0) + novasMatriculasETI,
@@ -81,8 +76,7 @@ export default function SimuladorETIPage() {
     };
 
     const vaafSimulado = calcularVAAF(novasMatriculas, parametros);
-    const escolaSimulada = { ...selectedSchool, matriculas: novasMatriculas };
-    const pnaeSimulado = calcularPNAE(escolaSimulada, parametros);
+    const pnaeSimulado = calcularPNAE(novasMatriculas, parametros);
     
     const receitaSimulada = vaafSimulado + pnaeSimulado;
     const incrementoReceita = receitaSimulada - receitaAtual;
@@ -99,9 +93,17 @@ export default function SimuladorETIPage() {
       saldoSimulacao,
       viabilidade,
       percentualETIAnterior: selectedSchool.percentual_eti || 0,
-      percentualETINovo: (((selectedSchool.total_eti || 0) + novasMatriculasETI) / (selectedSchool.total_matriculas || 1)) * 100
+      percentualETINovo: totalMatriculas(novasMatriculas) > 0 ? (totalETI(novasMatriculas) / totalMatriculas(novasMatriculas)) * 100 : 0
     };
   }, [selectedSchool, novasMatriculasETI, custoExtraEstimado, parametros]);
+
+  function totalMatriculas(m: any) {
+    return Object.values(m).reduce((a: any, b: any) => a + (b || 0), 0);
+  }
+
+  function totalETI(m: any) {
+    return (m.creche_integral || 0) + (m.pre_integral || 0) + (m.ef_ai_integral || 0) + (m.ef_af_integral || 0);
+  }
 
   if (schoolsLoading || profileLoading) {
     return (
