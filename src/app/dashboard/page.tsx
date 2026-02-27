@@ -1,9 +1,9 @@
 "use client"
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { KPICard } from "@/components/dashboard/kpi-card";
-import { Users, GraduationCap, DollarSign, AlertCircle, TrendingUp, Sparkles, FileText, Download } from "lucide-react";
-import { MOCK_SCHOOLS, DEFAULT_PARAMETERS } from "@/lib/constants";
+import { Users, GraduationCap, DollarSign, AlertCircle, TrendingUp, Sparkles, FileText, Download, Loader2 } from "lucide-react";
+import { DEFAULT_PARAMETERS } from "@/lib/constants";
 import { calcularVAAF, calcularVAAT, calcularPNAE, calcularMDE, calcularOutros } from "@/lib/calculations";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -12,77 +12,123 @@ import { Button } from "@/components/ui/button";
 import { generateExecutiveFinancialReport } from "@/ai/flows/generate-executive-financial-report";
 import { useToast } from "@/hooks/use-toast";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useAuth, useFirestore, useUser, useDoc, useCollection } from "@/firebase";
+import { doc, collection, query, where } from "firebase/firestore";
 
 export default function DashboardPage() {
   const { toast } = useToast();
   const [isGenerating, setIsGenerating] = useState(false);
   const [report, setReport] = useState<string | null>(null);
 
-  const totalMatriculasRede = MOCK_SCHOOLS.reduce((acc, s) => acc + s.total_matriculas, 0);
-  const totalETIRede = MOCK_SCHOOLS.reduce((acc, s) => acc + s.total_eti, 0);
-  const percentualETIRede = (totalETIRede / totalMatriculasRede) * 100;
+  const auth = useAuth();
+  const db = useFirestore();
+  const { user } = useUser(auth);
 
-  const schoolsAnalysis = MOCK_SCHOOLS.map(school => {
-    const vaaf = calcularVAAF(school.matriculas, DEFAULT_PARAMETERS);
-    const vaat = calcularVAAT(school, DEFAULT_PARAMETERS, totalMatriculasRede);
-    const pnae = calcularPNAE(school, DEFAULT_PARAMETERS);
-    const mde = calcularMDE(school, DEFAULT_PARAMETERS, totalMatriculasRede);
-    const outros = calcularOutros(school, DEFAULT_PARAMETERS, totalMatriculasRede);
-    
-    const receitaTotal = vaaf + vaat + pnae + mde + outros;
-    // Mock expenses as ~90% of revenue for demonstration
-    const despesaTotal = receitaTotal * (0.8 + Math.random() * 0.25);
-    const saldo = receitaTotal - despesaTotal;
-    const cobertura = receitaTotal / despesaTotal;
-    const custoAluno = despesaTotal / school.total_matriculas;
-    const receitaAluno = receitaTotal / school.total_matriculas;
+  // Perfil do Usuário
+  const userProfileRef = useMemo(() => (db && user ? doc(db, 'users', user.uid) : null), [db, user]);
+  const { data: profile, loading: profileLoading } = useDoc(userProfileRef);
+  const municipioId = profile?.municipioId;
 
-    let status: 'superavit' | 'neutro' | 'deficit' = 'superavit';
-    if (cobertura <= 0.9) status = 'deficit';
-    else if (cobertura < 1.1) status = 'neutro';
+  // Escolas do Município
+  const schoolsRef = useMemo(() => (db && municipioId ? collection(db, 'municipios', municipioId, 'schools') : null), [db, municipioId]);
+  const { data: schools, loading: schoolsLoading } = useCollection(schoolsRef);
+
+  // Parâmetros de Financiamento
+  const paramsRef = useMemo(() => (db && municipioId ? doc(db, 'municipios', municipioId, 'config', 'parameters') : null), [db, municipioId]);
+  const { data: customParams } = useDoc(paramsRef);
+  const parametros = (customParams as any) || DEFAULT_PARAMETERS;
+
+  // Cálculos Consolidados
+  const { analysis, stats } = useMemo(() => {
+    if (!schools || schools.length === 0) return { analysis: [], stats: null };
+
+    const totalMatriculasRede = schools.reduce((acc, s: any) => acc + s.total_matriculas, 0);
+    const totalETIRede = schools.reduce((acc, s: any) => acc + s.total_eti, 0);
+
+    const schoolAnalyses = schools.map((school: any) => {
+      // Nota: As matrículas no Firestore podem vir simplificadas ou completas. 
+      // Se não existirem, usamos 0.
+      const schoolMatriculas = school.matriculas || {
+        creche_integral: 0, creche_parcial: 0, creche_conveniada_int: 0, creche_conveniada_par: 0,
+        pre_integral: 0, pre_parcial: 0, ef_ai_integral: 0, ef_ai_parcial: 0, ef_af_integral: 0, ef_af_parcial: 0,
+        eja_fundamental: 0, eja_medio: 0, especial_aee: 0, indigena_quilombola: 0, campo_rural: 0
+      };
+
+      const vaaf = calcularVAAF(schoolMatriculas, parametros);
+      const vaat = calcularVAAT(school, parametros, totalMatriculasRede);
+      const pnae = calcularPNAE(school, parametros);
+      const mde = calcularMDE(school, parametros, totalMatriculasRede);
+      const outros = calcularOutros(school, parametros, totalMatriculasRede);
+      
+      const receitaTotal = vaaf + vaat + pnae + mde + outros;
+      // Custo simulado se não houver lançamento real (92% da receita em média)
+      const despesaTotal = school.total_despesa || (receitaTotal * 0.92);
+      const saldo = receitaTotal - despesaTotal;
+      const cobertura = despesaTotal > 0 ? receitaTotal / despesaTotal : 1;
+      const custoAluno = school.total_matriculas > 0 ? despesaTotal / school.total_matriculas : 0;
+      const receitaAluno = school.total_matriculas > 0 ? receitaTotal / school.total_matriculas : 0;
+
+      let status: 'superavit' | 'neutro' | 'deficit' = 'superavit';
+      if (cobertura <= 0.95) status = 'deficit';
+      else if (cobertura < 1.05) status = 'neutro';
+
+      return {
+        ...school,
+        receitaTotal,
+        despesaTotal,
+        saldo,
+        cobertura,
+        custoAluno,
+        receitaAluno,
+        status
+      };
+    });
+
+    const totalSaldo = schoolAnalyses.reduce((acc, s) => acc + s.saldo, 0);
+    const deficitCount = schoolAnalyses.filter(s => s.status === 'deficit').length;
+    const avgCusto = schoolAnalyses.reduce((acc, s) => acc + s.custoAluno, 0) / schoolAnalyses.length;
+    const totalReceitaRede = schoolAnalyses.reduce((acc, s) => acc + s.receitaTotal, 0);
 
     return {
-      ...school,
-      receitaTotal,
-      despesaTotal,
-      saldo,
-      cobertura,
-      custoAluno,
-      receitaAluno,
-      status
+      analysis: schoolAnalyses,
+      stats: {
+        totalMatriculasRede,
+        totalETIRede,
+        percentualETI: (totalETIRede / totalMatriculasRede) * 100,
+        totalSaldo,
+        deficitCount,
+        avgCusto,
+        receitaAlunoMedio: totalMatriculasRede > 0 ? totalReceitaRede / totalMatriculasRede : 0
+      }
     };
-  });
-
-  const saldoTotalRede = schoolsAnalysis.reduce((acc, s) => acc + s.saldo, 0);
-  const escolasEmDeficit = schoolsAnalysis.filter(s => s.status === 'deficit').length;
-  const custoAlunoMedioRede = schoolsAnalysis.reduce((acc, s) => acc + s.custo_aluno, 0) / schoolsAnalysis.length;
-  const receitaAlunoMedioRede = schoolsAnalysis.reduce((acc, s) => acc + s.receita_total, 0) / schoolsAnalysis.length; // Actually total revenue / total network enrollments would be better
+  }, [schools, parametros]);
 
   const handleGenerateReport = async () => {
+    if (!stats) return;
     setIsGenerating(true);
     try {
       const input = {
-        municipio: "São João dos Campos",
-        uf: "MG",
+        municipio: profile?.municipio || "Município",
+        uf: "MG", // Idealmente viria do perfil
         exercicio: 2026,
-        totalMatriculas: totalMatriculasRede,
-        totalETI: totalETIRede,
-        percentualETI: Math.round(percentualETIRede),
-        custoAlunoMedio: Math.round(custoAlunoMedioRede),
-        receitaAlunoMedio: Math.round(receitaTotalRedePerStudent),
-        saldoTotalRede: Math.round(saldoTotalRede),
-        saldoStatus: saldoTotalRede >= 0 ? "superávit" : "déficit",
-        escolasEmDeficit,
-        totalEscolas: MOCK_SCHOOLS.length,
-        escolasETIlt20Percent: MOCK_SCHOOLS.filter(s => s.percentual_eti < 20).length,
+        totalMatriculas: stats.totalMatriculasRede,
+        totalETI: stats.totalETIRede,
+        percentualETI: Math.round(stats.percentualETI),
+        custoAlunoMedio: Math.round(stats.avgCusto),
+        receitaAlunoMedio: Math.round(stats.receitaAlunoMedio),
+        saldoTotalRede: Math.round(stats.totalSaldo),
+        saldoStatus: stats.totalSaldo >= 0 ? "superávit" : "déficit",
+        escolasEmDeficit: stats.deficitCount,
+        totalEscolas: schools?.length || 0,
+        escolasETIlt20Percent: analysis.filter(s => s.percentual_eti < 20).length,
         composicaoReceitas: {
-          fundebVaaf: { amount: 1500000, percentage: 65 },
-          vaat: { amount: 350000, percentage: 15 },
-          pnae: { amount: 120000, percentage: 5 },
-          mdeLiquido: { amount: 230000, percentage: 10 },
-          outros: { amount: 115000, percentage: 5 },
+          fundebVaaf: { amount: Math.round(stats.totalMatriculasRede * parametros.vaaf_base * 0.7), percentage: 70 },
+          vaat: { amount: Math.round(parametros.vaat_total_rede), percentage: 15 },
+          pnae: { amount: 150000, percentage: 5 },
+          mdeLiquido: { amount: Math.round(parametros.mde_liquido_eti), percentage: 10 },
+          outros: { amount: 50000, percentage: 0 },
         },
-        escolasEmAtencao: schoolsAnalysis
+        escolasEmAtencao: analysis
           .filter(s => s.status === 'deficit')
           .slice(0, 5)
           .map(s => `${s.nome}: Cobertura de ${s.cobertura.toFixed(2)}x`),
@@ -101,13 +147,35 @@ export default function DashboardPage() {
     }
   };
 
-  const receitaTotalRedePerStudent = schoolsAnalysis.reduce((acc, s) => acc + s.receitaTotal, 0) / totalMatriculasRede;
+  if (profileLoading || schoolsLoading) {
+    return (
+      <div className="h-[60vh] flex flex-col items-center justify-center gap-4">
+        <Loader2 className="h-10 w-10 animate-spin text-primary opacity-20" />
+        <p className="text-muted-foreground animate-pulse">Carregando dados da rede...</p>
+      </div>
+    );
+  }
+
+  if (!schools || schools.length === 0) {
+    return (
+      <div className="h-[60vh] flex flex-col items-center justify-center text-center p-8 space-y-4">
+        <AlertCircle className="h-12 w-12 text-muted-foreground/30" />
+        <h3 className="text-xl font-bold">Nenhuma escola encontrada</h3>
+        <p className="text-muted-foreground max-w-xs">
+          Parece que ainda não foram consolidados dados do Censo Escolar para o município de {profile?.municipio}.
+        </p>
+        <Button asChild variant="outline">
+          <a href="/dashboard/censo">Ir para Censo Escolar</a>
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-headline font-bold text-primary">Diagnóstico da Rede</h2>
+          <h2 className="text-3xl font-headline font-bold text-primary">Diagnóstico: {profile?.municipio}</h2>
           <p className="text-muted-foreground">Visão geral do exercício fiscal 2026</p>
         </div>
         <div className="flex gap-2">
@@ -124,30 +192,29 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard 
           title="Matrículas Totais" 
-          value={totalMatriculasRede.toLocaleString()} 
+          value={stats?.totalMatriculasRede.toLocaleString() || "0"} 
           icon={Users}
           subtitle="Rede Municipal"
         />
         <KPICard 
           title="Alunos em ETI" 
-          value={`${percentualETIRede.toFixed(1)}%`} 
+          value={`${stats?.percentualETI.toFixed(1)}%`} 
           icon={GraduationCap}
-          subtitle={`${totalETIRede} alunos em tempo integral`}
-          trend={{ value: 4.2, label: "vs 2025", isPositive: true }}
+          subtitle={`${stats?.totalETIRede} alunos em tempo integral`}
         />
         <KPICard 
           title="Saldo da Rede" 
-          value={`R$ ${(saldoTotalRede / 1000).toFixed(1)}k`} 
+          value={`R$ ${((stats?.totalSaldo || 0) / 1000).toFixed(1)}k`} 
           icon={DollarSign}
-          subtitle={saldoTotalRede >= 0 ? "Superávit projetado" : "Déficit projetado"}
-          className={saldoTotalRede >= 0 ? "bg-green-50/50" : "bg-red-50/50"}
+          subtitle={stats?.totalSaldo! >= 0 ? "Superávit projetado" : "Déficit projetado"}
+          className={stats?.totalSaldo! >= 0 ? "bg-green-50/50" : "bg-red-50/50"}
         />
         <KPICard 
           title="Escolas em Déficit" 
-          value={escolasEmDeficit} 
+          value={stats?.deficitCount || 0} 
           icon={AlertCircle}
-          subtitle={`De ${MOCK_SCHOOLS.length} escolas totais`}
-          className={escolasEmDeficit > 0 ? "bg-orange-50/50" : ""}
+          subtitle={`De ${schools.length} escolas totais`}
+          className={stats?.deficitCount! > 0 ? "bg-orange-50/50" : ""}
         />
       </div>
 
@@ -155,7 +222,7 @@ export default function DashboardPage() {
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle className="font-headline">Diagnóstico por Escola</CardTitle>
-            <CardDescription>Resumo financeiro e operacional de cada unidade</CardDescription>
+            <CardDescription>Resumo financeiro e operacional consolidado</CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
@@ -169,7 +236,7 @@ export default function DashboardPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {schoolsAnalysis.map((school) => (
+                {analysis.map((school) => (
                   <TableRow key={school.id}>
                     <TableCell className="font-medium">{school.nome}</TableCell>
                     <TableCell className="text-right">R$ {school.receitaAluno.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>

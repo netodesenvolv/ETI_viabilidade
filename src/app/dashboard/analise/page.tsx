@@ -13,37 +13,74 @@ import {
   Tooltip, 
   ResponsiveContainer, 
   Cell,
-  Legend,
-  ComposedChart,
-  Line
+  Legend
 } from "recharts";
-import { MOCK_SCHOOLS, DEFAULT_PARAMETERS } from "@/lib/constants";
+import { DEFAULT_PARAMETERS } from "@/lib/constants";
 import { calcularVAAF, calcularVAAT, calcularPNAE, calcularMDE, calcularOutros } from "@/lib/calculations";
-import { Calculator, TrendingDown, TrendingUp, AlertTriangle, CheckCircle2, Info } from "lucide-react";
+import { Calculator, TrendingDown, TrendingUp, AlertTriangle, CheckCircle2, Info, Loader2 } from "lucide-react";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { useAuth, useFirestore, useUser, useDoc, useCollection } from "@/firebase";
+import { doc, collection } from "firebase/firestore";
 
 export default function AnaliseCustoAlunoPage() {
-  const totalMatriculasRede = MOCK_SCHOOLS.reduce((acc, s) => acc + s.total_matriculas, 0);
+  const auth = useAuth();
+  const db = useFirestore();
+  const { user } = useUser(auth);
+
+  // Perfil e Município
+  const userProfileRef = useMemo(() => (db && user ? doc(db, 'users', user.uid) : null), [db, user]);
+  const { data: profile, loading: profileLoading } = useDoc(userProfileRef);
+  const municipioId = profile?.municipioId;
+
+  // Dados do Firestore
+  const schoolsRef = useMemo(() => (db && municipioId ? collection(db, 'municipios', municipioId, 'schools') : null), [db, municipioId]);
+  const { data: schools, loading: schoolsLoading } = useCollection(schoolsRef);
+
+  const expensesRef = useMemo(() => (db && municipioId ? collection(db, 'municipios', municipioId, 'expenses') : null), [db, municipioId]);
+  const { data: expenses } = useCollection(expensesRef);
+
+  const paramsRef = useMemo(() => (db && municipioId ? doc(db, 'municipios', municipioId, 'config', 'parameters') : null), [db, municipioId]);
+  const { data: customParams } = useDoc(paramsRef);
+  const parametros = (customParams as any) || DEFAULT_PARAMETERS;
 
   const analysisData = useMemo(() => {
-    return MOCK_SCHOOLS.map(school => {
+    if (!schools) return [];
+
+    const totalMatriculasRede = schools.reduce((acc, s: any) => acc + s.total_matriculas, 0);
+
+    return schools.map((school: any) => {
+      // Agrupar despesas reais do banco para esta escola
+      const schoolExpenses = (expenses || []).filter((e: any) => e.schoolId === school.id);
+      const totalDespesaReal = schoolExpenses.reduce((acc, e: any) => acc + e.value, 0);
+
+      const schoolMatriculas = school.matriculas || {
+        creche_integral: 0, creche_parcial: 0, creche_conveniada_int: 0, creche_conveniada_par: 0,
+        pre_integral: 0, pre_parcial: 0, ef_ai_integral: 0, ef_ai_parcial: 0, ef_af_integral: 0, ef_af_parcial: 0,
+        eja_fundamental: 0, eja_medio: 0, especial_aee: 0, indigena_quilombola: 0, campo_rural: 0
+      };
+
       // Receita
-      const vaaf = calcularVAAF(school.matriculas, DEFAULT_PARAMETERS);
-      const vaat = calcularVAAT(school, DEFAULT_PARAMETERS, totalMatriculasRede);
-      const pnae = calcularPNAE(school, DEFAULT_PARAMETERS);
-      const mde = calcularMDE(school, DEFAULT_PARAMETERS, totalMatriculasRede);
-      const outros = calcularOutros(school, DEFAULT_PARAMETERS, totalMatriculasRede);
+      const vaaf = calcularVAAF(schoolMatriculas, parametros);
+      const vaat = calcularVAAT(school, parametros, totalMatriculasRede);
+      const pnae = calcularPNAE(school, parametros);
+      const mde = calcularMDE(school, parametros, totalMatriculasRede);
+      const outros = calcularOutros(school, parametros, totalMatriculasRede);
       const receitaTotal = vaaf + vaat + pnae + mde + outros;
       const receitaPorAluno = school.total_matriculas > 0 ? receitaTotal / school.total_matriculas : 0;
 
-      // Custo (Simulado com variação para demonstração)
-      // Escolas com mais ETI tendem a ter custo maior
-      const fatorETI = 1 + (school.percentual_eti / 100) * 0.4; // Até 40% mais caro se 100% ETI
-      const custoBase = 6200; // Custo base anual por aluno
-      const custoPorAluno = custoBase * fatorETI * (0.9 + Math.random() * 0.2);
+      // Custo
+      // Se houver despesa real lançada, usamos ela. Caso contrário, usamos um custo estimado baseado em ETI.
+      let custoPorAluno = 0;
+      if (totalDespesaReal > 0) {
+        custoPorAluno = totalDespesaReal / school.total_matriculas;
+      } else {
+        const fatorETI = 1 + (school.percentual_eti / 100) * 0.45;
+        const custoBase = 6400; 
+        custoPorAluno = custoBase * fatorETI;
+      }
       
       const saldoPorAluno = receitaPorAluno - custoPorAluno;
-      const sustentabilidade = (receitaPorAluno / custoPorAluno) * 100;
+      const sustentabilidade = custoPorAluno > 0 ? (receitaPorAluno / custoPorAluno) * 100 : 100;
 
       return {
         name: school.nome,
@@ -56,9 +93,10 @@ export default function AnaliseCustoAlunoPage() {
         status: sustentabilidade >= 105 ? 'superavit' : sustentabilidade >= 95 ? 'neutro' : 'deficit'
       };
     });
-  }, [totalMatriculasRede]);
+  }, [schools, expenses, parametros]);
 
   const networkStats = useMemo(() => {
+    if (analysisData.length === 0) return null;
     const avgReceita = analysisData.reduce((acc, d) => acc + d.receita, 0) / analysisData.length;
     const avgCusto = analysisData.reduce((acc, d) => acc + d.custo, 0) / analysisData.length;
     const atRisk = analysisData.filter(d => d.status === 'deficit').length;
@@ -70,6 +108,15 @@ export default function AnaliseCustoAlunoPage() {
       sustentabilidadeMedia: (avgReceita / avgCusto) * 100
     };
   }, [analysisData]);
+
+  if (profileLoading || schoolsLoading) {
+    return (
+      <div className="h-[60vh] flex flex-col items-center justify-center gap-4">
+        <Loader2 className="h-10 w-10 animate-spin text-primary opacity-20" />
+        <p className="text-muted-foreground">Processando análise custo-aluno...</p>
+      </div>
+    );
+  }
 
   const chartConfig = {
     receita: {
@@ -85,7 +132,7 @@ export default function AnaliseCustoAlunoPage() {
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div>
-        <h2 className="text-3xl font-headline font-bold text-primary">Análise Custo-Aluno</h2>
+        <h2 className="text-3xl font-headline font-bold text-primary">Análise Custo-Aluno: {profile?.municipio}</h2>
         <p className="text-muted-foreground">Comparativo real entre repasses recebidos e custos operacionais por unidade</p>
       </div>
 
@@ -95,7 +142,7 @@ export default function AnaliseCustoAlunoPage() {
             <CardTitle className="text-xs font-bold text-muted-foreground uppercase">Média Receita/Aluno</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">R$ {networkStats.avgReceita.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</div>
+            <div className="text-2xl font-bold">R$ {networkStats?.avgReceita.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) || "0"}</div>
             <div className="flex items-center gap-1 text-green-600 text-xs mt-1">
               <TrendingUp className="h-3 w-3" /> Repasses 2026
             </div>
@@ -107,7 +154,7 @@ export default function AnaliseCustoAlunoPage() {
             <CardTitle className="text-xs font-bold text-muted-foreground uppercase">Média Custo/Aluno</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">R$ {networkStats.avgCusto.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</div>
+            <div className="text-2xl font-bold">R$ {networkStats?.avgCusto.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) || "0"}</div>
             <div className="flex items-center gap-1 text-orange-600 text-xs mt-1">
               <Calculator className="h-3 w-3" /> Despesas Consolidadas
             </div>
@@ -119,8 +166,8 @@ export default function AnaliseCustoAlunoPage() {
             <CardTitle className="text-xs font-bold text-muted-foreground uppercase">Índice Sustentabilidade</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold ${networkStats.sustentabilidadeMedia >= 100 ? 'text-green-600' : 'text-destructive'}`}>
-              {networkStats.sustentabilidadeMedia.toFixed(1)}%
+            <div className={`text-2xl font-bold ${networkStats && networkStats.sustentabilidadeMedia >= 100 ? 'text-green-600' : 'text-destructive'}`}>
+              {networkStats?.sustentabilidadeMedia.toFixed(1)}%
             </div>
             <p className="text-[10px] text-muted-foreground mt-1">Meta Ideal: {'>'} 105%</p>
           </CardContent>
@@ -131,7 +178,7 @@ export default function AnaliseCustoAlunoPage() {
             <CardTitle className="text-xs font-bold text-muted-foreground uppercase">Escolas Sob Alerta</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-destructive">{networkStats.atRisk}</div>
+            <div className="text-2xl font-bold text-destructive">{networkStats?.atRisk || 0}</div>
             <div className="flex items-center gap-1 text-destructive text-xs mt-1">
               <AlertTriangle className="h-3 w-3" /> Déficit operacional
             </div>
@@ -163,28 +210,21 @@ export default function AnaliseCustoAlunoPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Fatores de Risco</CardTitle>
-            <CardDescription>Por que o custo varia entre as unidades?</CardDescription>
+            <CardDescription>Análise da variabilidade de custos</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex gap-3 p-3 bg-muted/50 rounded-lg">
               <TrendingDown className="h-5 w-5 text-primary shrink-0" />
               <div>
                 <p className="text-xs font-bold">Ganho de Escala</p>
-                <p className="text-[11px] text-muted-foreground">Escolas com menos de 150 alunos apresentam custo fixo/aluno até 25% superior à média da rede.</p>
+                <p className="text-[11px] text-muted-foreground">Unidades com baixo quociente de matrículas tendem a ter custo fixo superior.</p>
               </div>
             </div>
             <div className="flex gap-3 p-3 bg-muted/50 rounded-lg">
               <TrendingUp className="h-5 w-5 text-accent shrink-0" />
               <div>
                 <p className="text-xs font-bold">Impacto do ETI</p>
-                <p className="text-[11px] text-muted-foreground">Cada 10% de aumento no ETI eleva o custo médio em R$ 420,00/ano, mas o repasse FUNDEB cobre apenas ~R$ 380,00.</p>
-              </div>
-            </div>
-            <div className="flex gap-3 p-3 bg-muted/50 rounded-lg">
-              <Info className="h-5 w-5 text-orange-500 shrink-0" />
-              <div>
-                <p className="text-xs font-bold">Vulnerabilidade VAAT</p>
-                <p className="text-[11px] text-muted-foreground">Unidades com alta dependência do VAAT sofrem com a volatilidade dos critérios de vulnerabilidade socioeconômica.</p>
+                <p className="text-[11px] text-muted-foreground">O custo aluno-ETI exige maior aporte de recursos próprios além do VAAf.</p>
               </div>
             </div>
           </CardContent>
