@@ -3,26 +3,31 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { GraduationCap, Loader2, Lock, Mail } from "lucide-react"
+import { GraduationCap, Loader2, Lock, Mail, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
-import { signInWithEmailAndPassword } from "firebase/auth"
-import { getAuth } from "firebase/auth"
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth"
+import { useAuth, useFirestore } from "@/firebase"
+import { doc, setDoc } from "firebase/firestore"
 import Link from "next/link"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
+  const [seeding, setSeeding] = useState(false)
   const router = useRouter()
   const { toast } = useToast()
-  const auth = getAuth()
+  
+  const auth = useAuth()
+  const db = useFirestore()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!auth) return
     setLoading(true)
 
     try {
@@ -43,8 +48,55 @@ export default function LoginPage() {
     }
   }
 
+  const handleSeedAdmin = async () => {
+    if (!auth || !db) return
+    setSeeding(true)
+    
+    const adminEmail = "castroalvesneto@gmail.com"
+    const adminPass = "paix2018+"
+
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, adminEmail, adminPass)
+      const user = userCredential.user
+
+      // Criar Perfil no Firestore
+      await setDoc(doc(db, "users", user.uid), {
+        name: "Administrador Geral",
+        email: adminEmail,
+        role: "Admin",
+        municipio: "Gestão Central",
+        municipioId: "0000000", // ID mestre para visão global
+        status: "Ativo",
+        createdAt: new Date().toISOString()
+      })
+
+      toast({
+        title: "Administrador Criado!",
+        description: "O perfil de admin geral foi configurado com sucesso.",
+      })
+      
+      setEmail(adminEmail)
+      setPassword(adminPass)
+    } catch (error: any) {
+      if (error.code === 'auth/email-already-in-use') {
+        toast({
+          title: "Atenção",
+          description: "Este administrador já está cadastrado no sistema.",
+        })
+      } else {
+        toast({
+          title: "Erro na configuração",
+          description: error.message,
+          variant: "destructive",
+        })
+      }
+    } finally {
+      setSeeding(false)
+    }
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md border-none shadow-2xl">
         <CardHeader className="space-y-1 text-center">
           <div className="flex justify-center mb-4">
@@ -88,15 +140,39 @@ export default function LoginPage() {
             </div>
           </CardContent>
           <CardFooter className="flex flex-col gap-4">
-            <Button type="submit" className="w-full font-bold" disabled={loading}>
+            <Button type="submit" className="w-full font-bold" disabled={loading || seeding}>
               {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : "Acessar Sistema"}
             </Button>
-            <Link href="/" className="text-xs text-muted-foreground hover:underline">
+            
+            <div className="w-full relative py-2">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">Primeiro Acesso?</span>
+              </div>
+            </div>
+
+            <Button 
+              type="button" 
+              variant="outline" 
+              className="w-full gap-2 border-dashed"
+              onClick={handleSeedAdmin}
+              disabled={loading || seeding}
+            >
+              {seeding ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+              Criar Administrador Geral
+            </Button>
+
+            <Link href="/" className="text-xs text-muted-foreground hover:underline mt-2">
               Voltar para a página inicial
             </Link>
           </CardFooter>
         </form>
       </Card>
+      <p className="mt-8 text-xs text-muted-foreground max-w-xs text-center">
+        O botão de "Criar Administrador" é um recurso de configuração inicial para o e-mail mestre solicitado.
+      </p>
     </div>
   )
 }
