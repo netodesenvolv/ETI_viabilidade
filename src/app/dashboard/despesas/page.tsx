@@ -1,20 +1,18 @@
-
 "use client"
 
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Save, FileSpreadsheet, Plus, Trash2, Download, Upload, Loader2, Building2, Landmark, PieChart, FileText } from "lucide-react";
-import { MOCK_SCHOOLS } from "@/lib/constants";
+import { Save, FileSpreadsheet, Plus, Trash2, Download, Upload, Loader2, Building2, Landmark, PieChart, FileText, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth, useFirestore, useUser, useDoc, useCollection } from "@/firebase";
-import { doc, setDoc, collection, addDoc, query, where } from "firebase/firestore";
+import { doc, setDoc, collection } from "firebase/firestore";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 
@@ -39,7 +37,7 @@ interface SchoolExpenseEntry {
 export default function DespesasPage() {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [selectedSchool, setSelectedSchool] = useState(MOCK_SCHOOLS[0].id);
+  const [selectedSchool, setSelectedSchool] = useState<string>("");
   const [isImporting, setIsImporting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   
@@ -51,8 +49,19 @@ export default function DespesasPage() {
   const { data: profile } = useDoc(userProfileRef);
   const municipioId = profile?.municipioId;
 
+  // Escolas do Município
+  const schoolsRef = useMemo(() => (db && municipioId ? collection(db, 'municipios', municipioId, 'schools') : null), [db, municipioId]);
+  const { data: schools, loading: schoolsLoading } = useCollection(schoolsRef);
+
   // Estado para armazenar despesas (lançamentos temporários da sessão)
   const [expenses, setExpenses] = useState<SchoolExpenseEntry[]>([]);
+
+  // Seta a primeira escola quando carregar
+  useEffect(() => {
+    if (schools && schools.length > 0 && !selectedSchool) {
+      setSelectedSchool(schools[0].id);
+    }
+  }, [schools, selectedSchool]);
 
   const handleSave = async () => {
     if (!db || !municipioId) {
@@ -78,8 +87,6 @@ export default function DespesasPage() {
     
     try {
       const promises = schoolEntries.map(entry => {
-        // Criamos um ID baseado na escola e categoria para evitar duplicatas simples (ou usamos addDoc para histórico)
-        // No modelo ETI, geralmente consolidamos por exercício
         const expenseId = `${entry.schoolId}_${entry.category.replace(/\s+/g, '_')}_2026`;
         const expenseRef = doc(db, 'municipios', municipioId, 'expenses', expenseId);
         
@@ -116,9 +123,18 @@ export default function DespesasPage() {
   };
 
   const handleDownloadTemplate = () => {
+    if (!schools || schools.length === 0) {
+      toast({
+        title: "Sem dados",
+        description: "Nenhuma escola disponível para gerar modelo. Importe o censo primeiro.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     const headers = ["CO_ENTIDADE", "NO_ENTIDADE", "Categoria", "Valor_Anual"];
     
-    const rows = MOCK_SCHOOLS.flatMap(school => 
+    const rows = schools.flatMap((school: any) => 
       EXPENSE_CATEGORIES.slice(0, 3).map(cat => [
         school.codigo_inep,
         school.nome,
@@ -136,7 +152,7 @@ export default function DespesasPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", "modelo_importacao_despesas_eti.csv");
+    link.setAttribute("download", `modelo_despesas_${profile?.municipio || 'eti'}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -150,7 +166,7 @@ export default function DespesasPage() {
 
   const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !schools) return;
 
     setIsImporting(true);
     const reader = new FileReader();
@@ -167,7 +183,7 @@ export default function DespesasPage() {
         const separator = line.includes(';') ? ';' : ',';
         const [inep, name, category, valueStr] = line.split(separator);
         
-        const school = MOCK_SCHOOLS.find(s => s.codigo_inep === inep);
+        const school: any = schools.find((s: any) => s.codigo_inep === inep);
         if (school) {
           const cleanValue = (valueStr || "0")
             .replace(/\./g, '')
@@ -225,13 +241,37 @@ export default function DespesasPage() {
     return Object.values(schoolExpensesSum).reduce((acc, val) => acc + val, 0);
   }, [schoolExpensesSum]);
 
-  const selectedSchoolData = MOCK_SCHOOLS.find(s => s.id === selectedSchool);
+  const selectedSchoolData: any = schools?.find((s: any) => s.id === selectedSchool);
+
+  if (schoolsLoading) {
+    return (
+      <div className="h-[60vh] flex flex-col items-center justify-center gap-4">
+        <Loader2 className="h-10 w-10 animate-spin text-primary opacity-20" />
+        <p className="text-muted-foreground">Carregando unidades escolares...</p>
+      </div>
+    );
+  }
+
+  if (!schools || schools.length === 0) {
+    return (
+      <div className="h-[60vh] flex flex-col items-center justify-center text-center p-8 space-y-4">
+        <AlertCircle className="h-12 w-12 text-muted-foreground/30" />
+        <h3 className="text-xl font-bold">Nenhuma escola disponível</h3>
+        <p className="text-muted-foreground max-w-xs">
+          Importe o Censo Escolar antes de gerenciar as despesas das unidades.
+        </p>
+        <Button asChild variant="outline">
+          <a href="/dashboard/censo">Ir para Censo Escolar</a>
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-headline font-bold text-primary">Gestão de Despesas</h2>
+          <h2 className="text-3xl font-headline font-bold text-primary">Gestão de Despesas: {profile?.municipio}</h2>
           <p className="text-muted-foreground">Lançamento e consolidação de custos por unidade escolar</p>
         </div>
         <div className="flex gap-2">
@@ -275,7 +315,7 @@ export default function DespesasPage() {
                     <SelectValue placeholder="Selecione a escola" />
                   </SelectTrigger>
                   <SelectContent>
-                    {MOCK_SCHOOLS.map(s => (
+                    {schools.map((s: any) => (
                       <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>
                     ))}
                   </SelectContent>
@@ -381,7 +421,7 @@ export default function DespesasPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-3xl font-bold">R$ {totalNetworkExpenses.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                  <p className="text-xs text-white/60 mt-2">Consolidado de {MOCK_SCHOOLS.length} unidades</p>
+                  <p className="text-xs text-white/60 mt-2">Consolidado de {schools.length} unidades</p>
                 </CardContent>
               </Card>
               
@@ -394,7 +434,7 @@ export default function DespesasPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    {Object.keys(schoolExpensesSum).length} / {MOCK_SCHOOLS.length}
+                    {Object.keys(schoolExpensesSum).length} / {schools.length}
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">Unidades com despesas na sessão</p>
                 </CardContent>
@@ -406,8 +446,8 @@ export default function DespesasPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-accent">
-                    R$ {MOCK_SCHOOLS.reduce((acc, s) => acc + s.total_matriculas, 0) > 0 
-                      ? (totalNetworkExpenses / MOCK_SCHOOLS.reduce((acc, s) => acc + s.total_matriculas, 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+                    R$ {schools.reduce((acc: number, s: any) => acc + (s.total_matriculas || 0), 0) > 0 
+                      ? (totalNetworkExpenses / schools.reduce((acc: number, s: any) => acc + (s.total_matriculas || 0), 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
                       : "0,00"}
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">Base: Lançamentos temporários</p>
@@ -435,7 +475,7 @@ export default function DespesasPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {MOCK_SCHOOLS.map((school) => {
+                        {schools.map((school: any) => {
                           const total = schoolExpensesSum[school.id] || 0;
                           const perStudent = school.total_matriculas > 0 ? total / school.total_matriculas : 0;
                           return (

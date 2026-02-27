@@ -1,42 +1,100 @@
 "use client"
 
+import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
-import { MOCK_SCHOOLS, DEFAULT_PARAMETERS } from "@/lib/constants";
+import { DEFAULT_PARAMETERS } from "@/lib/constants";
 import { calcularVAAF, calcularVAAT, calcularPNAE, calcularMDE, calcularOutros } from "@/lib/calculations";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, Info } from "lucide-react";
+import { TrendingUp, Info, Loader2, AlertCircle } from "lucide-react";
+import { useAuth, useFirestore, useUser, useDoc, useCollection } from "@/firebase";
+import { doc, collection } from "firebase/firestore";
+import { Button } from "@/components/ui/button";
 
 export default function ReceitasPage() {
-  const totalMatriculasRede = MOCK_SCHOOLS.reduce((acc, s) => acc + s.total_matriculas, 0);
+  const auth = useAuth();
+  const db = useFirestore();
+  const { user } = useUser(auth);
 
-  const schoolsRevenue = MOCK_SCHOOLS.map(school => {
-    const vaaf = calcularVAAF(school.matriculas, DEFAULT_PARAMETERS);
-    const vaat = calcularVAAT(school, DEFAULT_PARAMETERS, totalMatriculasRede);
-    const pnae = calcularPNAE(school, DEFAULT_PARAMETERS);
-    const mde = calcularMDE(school, DEFAULT_PARAMETERS, totalMatriculasRede);
-    const outros = calcularOutros(school, DEFAULT_PARAMETERS, totalMatriculasRede);
-    const total = vaaf + vaat + pnae + mde + outros;
+  // Perfil e Município
+  const userProfileRef = useMemo(() => (db && user ? doc(db, 'users', user.uid) : null), [db, user]);
+  const { data: profile, loading: profileLoading } = useDoc(userProfileRef);
+  const municipioId = profile?.municipioId;
 
-    return {
-      ...school,
-      vaaf, vaat, pnae, mde, outros, total
+  // Escolas do Município
+  const schoolsRef = useMemo(() => (db && municipioId ? collection(db, 'municipios', municipioId, 'schools') : null), [db, municipioId]);
+  const { data: schools, loading: schoolsLoading } = useCollection(schoolsRef);
+
+  // Parâmetros de Financiamento
+  const paramsRef = useMemo(() => (db && municipioId ? doc(db, 'municipios', municipioId, 'config', 'parameters') : null), [db, municipioId]);
+  const { data: customParams } = useDoc(paramsRef);
+  const parametros = (customParams as any) || DEFAULT_PARAMETERS;
+
+  const { schoolsRevenue, totals } = useMemo(() => {
+    if (!schools || schools.length === 0) return { schoolsRevenue: [], totals: null };
+
+    const totalMatriculasRede = schools.reduce((acc, s: any) => acc + (s.total_matriculas || 0), 0);
+
+    const revenueList = schools.map((school: any) => {
+      const schoolMatriculas = school.matriculas || {
+        creche_integral: 0, creche_parcial: 0, creche_conveniada_int: 0, creche_conveniada_par: 0,
+        pre_integral: 0, pre_parcial: 0, ef_ai_integral: 0, ef_ai_parcial: 0, ef_af_integral: 0, ef_af_parcial: 0,
+        eja_fundamental: 0, eja_medio: 0, especial_aee: 0, indigena_quilombola: 0, campo_rural: 0
+      };
+
+      const vaaf = calcularVAAF(schoolMatriculas, parametros);
+      const vaat = calcularVAAT(school, parametros, totalMatriculasRede);
+      const pnae = calcularPNAE(school, parametros);
+      const mde = calcularMDE(school, parametros, totalMatriculasRede);
+      const outros = calcularOutros(school, parametros, totalMatriculasRede);
+      const total = vaaf + vaat + pnae + mde + outros;
+
+      return {
+        ...school,
+        vaaf, vaat, pnae, mde, outros, total
+      };
+    });
+
+    const networkTotals = {
+      vaaf: revenueList.reduce((acc, s) => acc + s.vaaf, 0),
+      vaat: revenueList.reduce((acc, s) => acc + s.vaat, 0),
+      pnae: revenueList.reduce((acc, s) => acc + s.pnae, 0),
+      mde: revenueList.reduce((acc, s) => acc + s.mde, 0),
+      outros: revenueList.reduce((acc, s) => acc + s.outros, 0),
+      total: revenueList.reduce((acc, s) => acc + s.total, 0),
     };
-  });
 
-  const totals = {
-    vaaf: schoolsRevenue.reduce((acc, s) => acc + s.vaaf, 0),
-    vaat: schoolsRevenue.reduce((acc, s) => acc + s.vaat, 0),
-    pnae: schoolsRevenue.reduce((acc, s) => acc + s.pnae, 0),
-    mde: schoolsRevenue.reduce((acc, s) => acc + s.mde, 0),
-    outros: schoolsRevenue.reduce((acc, s) => acc + s.outros, 0),
-    total: schoolsRevenue.reduce((acc, s) => acc + s.total, 0),
-  };
+    return { schoolsRevenue: revenueList, totals: networkTotals };
+  }, [schools, parametros]);
+
+  if (profileLoading || schoolsLoading) {
+    return (
+      <div className="h-[60vh] flex flex-col items-center justify-center gap-4">
+        <Loader2 className="h-10 w-10 animate-spin text-primary opacity-20" />
+        <p className="text-muted-foreground">Carregando mapa de receitas...</p>
+      </div>
+    );
+  }
+
+  if (!schools || schools.length === 0) {
+    return (
+      <div className="h-[60vh] flex flex-col items-center justify-center text-center p-8 space-y-4">
+        <AlertCircle className="h-12 w-12 text-muted-foreground/30" />
+        <h3 className="text-xl font-bold">Nenhuma escola cadastrada</h3>
+        <p className="text-muted-foreground max-w-xs">
+          Importe os dados do Censo Escolar para visualizar as receitas estimadas do município.
+        </p>
+        <Button asChild variant="outline">
+          <a href="/dashboard/censo">Ir para Censo Escolar</a>
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-3xl font-headline font-bold text-primary">Mapa de Receitas</h2>
+        <h2 className="text-3xl font-headline font-bold text-primary">Mapa de Receitas: {profile?.municipio}</h2>
         <p className="text-muted-foreground">Cálculo detalhado de repasses por fonte e unidade escolar</p>
       </div>
 
@@ -46,7 +104,7 @@ export default function ReceitasPage() {
             <CardTitle className="text-sm font-medium text-white/70">Receita Total Estimada</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">R$ {totals.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+            <div className="text-2xl font-bold">R$ {totals?.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
             <p className="text-xs text-white/60 mt-1">Exercício 2026</p>
           </CardContent>
         </Card>
@@ -55,8 +113,8 @@ export default function ReceitasPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">FUNDEB VAAF</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">R$ {totals.vaaf.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</div>
-            <p className="text-xs text-muted-foreground mt-1">{((totals.vaaf / totals.total) * 100).toFixed(1)}% do total</p>
+            <div className="text-2xl font-bold">R$ {totals?.vaaf.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</div>
+            <p className="text-xs text-muted-foreground mt-1">{(totals && totals.total > 0 ? ((totals.vaaf / totals.total) * 100) : 0).toFixed(1)}% do total</p>
           </CardContent>
         </Card>
         <Card>
@@ -64,7 +122,7 @@ export default function ReceitasPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">Repasse VAAT</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">R$ {totals.vaat.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</div>
+            <div className="text-2xl font-bold">R$ {totals?.vaat.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</div>
             <p className="text-xs text-muted-foreground mt-1">Complementação Federal</p>
           </CardContent>
         </Card>
@@ -73,7 +131,7 @@ export default function ReceitasPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Detalhamento por Escola</CardTitle>
-          <CardDescription>Valores calculados com base nos parâmetros atuais</CardDescription>
+          <CardDescription>Valores calculados com base nos parâmetros atuais do município</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="rounded-lg border">
@@ -103,11 +161,11 @@ export default function ReceitasPage() {
               <TableFooter>
                 <TableRow className="font-bold">
                   <TableCell>Totais da Rede</TableCell>
-                  <TableCell className="text-right">R$ {totals.vaaf.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
-                  <TableCell className="text-right">R$ {totals.vaat.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
-                  <TableCell className="text-right">R$ {totals.pnae.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
-                  <TableCell className="text-right">R$ {totals.mde.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
-                  <TableCell className="text-right text-primary">R$ {totals.total.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                  <TableCell className="text-right">R$ {totals?.vaaf.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                  <TableCell className="text-right">R$ {totals?.vaat.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                  <TableCell className="text-right">R$ {totals?.pnae.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                  <TableCell className="text-right">R$ {totals?.mde.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                  <TableCell className="text-right text-primary">R$ {totals?.total.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
                 </TableRow>
               </TableFooter>
             </Table>

@@ -1,4 +1,3 @@
-
 "use client"
 
 import * as React from "react"
@@ -28,6 +27,8 @@ import {
   SidebarMenuItem,
   SidebarSeparator,
 } from "@/components/ui/sidebar"
+import { useAuth, useFirestore, useUser, useDoc } from "@/firebase"
+import { doc } from "firebase/firestore"
 
 const menuItems = [
   { title: "Painel Executivo", icon: LayoutDashboard, href: "/dashboard" },
@@ -42,6 +43,12 @@ const menuItems = [
 
 export function DashboardSidebar() {
   const pathname = usePathname()
+  const auth = useAuth()
+  const db = useFirestore()
+  const { user } = useUser(auth)
+
+  const userProfileRef = React.useMemo(() => (db && user ? doc(db, 'users', user.uid) : null), [db, user]);
+  const { data: profile } = useDoc(userProfileRef);
 
   return (
     <Sidebar collapsible="icon">
@@ -76,7 +83,7 @@ export function DashboardSidebar() {
       <SidebarFooter className="p-4">
         <div className="bg-white/10 rounded-lg p-3 group-data-[collapsible=icon]:hidden">
           <p className="text-xs text-white/60">Exercício 2026</p>
-          <p className="text-sm font-medium text-white truncate">São João dos Campos</p>
+          <p className="text-sm font-medium text-white truncate">{profile?.municipio || "Município não definido"}</p>
         </div>
       </SidebarFooter>
     </Sidebar>

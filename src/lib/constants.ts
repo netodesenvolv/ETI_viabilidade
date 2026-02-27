@@ -25,74 +25,7 @@ export const DEFAULT_PARAMETERS: FundingParameters = {
   outros_repasses: 30000,
 };
 
-export const MOCK_NETWORK: Network = {
-  id: "1",
-  municipio: "São João dos Campos",
-  uf: "MG",
-  codigo_ibge: "3162500",
-  codigo_inep_rede: "31000",
-  exercicio: 2026,
-};
+// Limpando dados de simulação para entrada de dados reais
+export const MOCK_NETWORK: Network | null = null;
 
-export const MOCK_SCHOOLS: School[] = [
-  {
-    id: "s1",
-    codigo_inep: "31123456",
-    nome: "EMEI Girassol",
-    localizacao: "urbana",
-    matriculas: {
-      creche_integral: 60, creche_parcial: 40, creche_conveniada_int: 0, creche_conveniada_par: 0,
-      pre_integral: 80, pre_parcial: 60,
-      ef_ai_integral: 0, ef_ai_parcial: 0, ef_af_integral: 0, ef_af_parcial: 0,
-      eja_fundamental: 0, eja_medio: 0, especial_aee: 10, indigena_quilombola: 0, campo_rural: 0
-    },
-    total_matriculas: 240,
-    total_eti: 140,
-    percentual_eti: 58.3
-  },
-  {
-    id: "s2",
-    codigo_inep: "31123457",
-    nome: "EMEF Santos Dumont",
-    localizacao: "urbana",
-    matriculas: {
-      creche_integral: 0, creche_parcial: 0, creche_conveniada_int: 0, creche_conveniada_par: 0,
-      pre_integral: 0, pre_parcial: 0,
-      ef_ai_integral: 120, ef_ai_parcial: 180, ef_af_integral: 80, ef_af_parcial: 220,
-      eja_fundamental: 0, eja_medio: 0, especial_aee: 25, indigena_quilombola: 0, campo_rural: 0
-    },
-    total_matriculas: 600,
-    total_eti: 200,
-    percentual_eti: 33.3
-  },
-  {
-    id: "s3",
-    codigo_inep: "31123458",
-    nome: "EMEF Rio Branco",
-    localizacao: "rural",
-    matriculas: {
-      creche_integral: 0, creche_parcial: 0, creche_conveniada_int: 0, creche_conveniada_par: 0,
-      pre_integral: 0, pre_parcial: 0,
-      ef_ai_integral: 0, ef_ai_parcial: 250, ef_af_integral: 0, ef_af_parcial: 200,
-      eja_fundamental: 60, eja_medio: 0, especial_aee: 15, indigena_quilombola: 0, campo_rural: 450
-    },
-    total_matriculas: 510,
-    total_eti: 0,
-    percentual_eti: 0
-  },
-  {
-    id: "s4",
-    codigo_inep: "31123459",
-    nome: "EMEF Dom Pedro I",
-    localizacao: "urbana",
-    matriculas: {
-      creche_integral: 0, creche_parcial: 0, creche_conveniada_int: 0, creche_conveniada_par: 0,
-      pre_integral: 0, pre_parcial: 0,
-      ef_ai_integral: 200, ef_ai_parcial: 100, ef_af_integral: 150, ef_af_parcial: 80,
-      eja_fundamental: 0, eja_medio: 0, especial_aee: 30, indigena_quilombola: 0, campo_rural: 0
-    },
-    total_matriculas: 530,
-    total_eti: 350,
-    percentual_eti: 66.0
-  }
-];
+export const MOCK_SCHOOLS: School[] = [];
