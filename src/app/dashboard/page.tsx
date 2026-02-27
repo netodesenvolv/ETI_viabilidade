@@ -29,7 +29,7 @@ export default function DashboardPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [report, setReport] = useState<string | null>(null);
   const [filterLocalizacao, setFilterLocalizacao] = useState<string>("todas");
-  // Filtro de rede agora padrão para Municipal ('3')
+  // Dashboard principal agora trava em Municipal por padrão
   const [filterDependencia, setFilterDependencia] = useState<string>("3");
 
   const auth = useAuth();
@@ -50,15 +50,16 @@ export default function DashboardPage() {
   const { analysis, stats } = useMemo(() => {
     if (!schools || schools.length === 0) return { analysis: [], stats: null };
 
-    // Filtro Central: Apenas escolas municipais entram no cálculo de rede
+    // FILTRO CENTRAL: Apenas rede municipal para métricas financeiras de rede
+    const municipalSchools = schools.filter(s => String(s.tp_dependencia) === '3');
+    const totalMatriculasMunicipal = municipalSchools.reduce((acc, s: any) => acc + (s.total_matriculas || 0), 0);
+
+    // Filtro da Visualização (Pode ser alterado pelo usuário para ver outras redes, mas as métricas de VAAF/PNAE em redes não-municipais são aproximadas)
     const filteredSchools = schools.filter(s => {
       const matchesLocalizacao = filterLocalizacao === "todas" ? true : String(s.localizacao).toLowerCase() === filterLocalizacao.toLowerCase();
       const matchesDependencia = filterDependencia === "todas" ? true : String(s.tp_dependencia).trim() === filterDependencia;
       return matchesLocalizacao && matchesDependencia;
     });
-
-    const totalMatriculasRede = filteredSchools.reduce((acc, s: any) => acc + (s.total_matriculas || 0), 0);
-    const totalETIRede = filteredSchools.reduce((acc, s: any) => acc + (s.total_eti || 0), 0);
 
     const schoolAnalyses = filteredSchools.map((school: any) => {
       const schoolMatriculas = school.matriculas || {
@@ -68,13 +69,13 @@ export default function DashboardPage() {
       };
 
       const vaaf = calcularVAAF(schoolMatriculas, parametros);
-      const vaat = calcularVAAT(school, parametros, totalMatriculasRede);
+      const vaat = calcularVAAT(school, parametros, totalMatriculasMunicipal);
       const pnae = calcularPNAE(schoolMatriculas, parametros);
-      const mde = calcularMDE(school, parametros, totalMatriculasRede);
-      const outros = calcularOutros(school, parametros, totalMatriculasRede);
+      const mde = calcularMDE(school, parametros, totalMatriculasMunicipal);
+      const outros = calcularOutros(school, parametros, totalMatriculasMunicipal);
       
       const receitaTotal = vaaf + vaat + pnae + mde + outros;
-      const despesaTotal = school.total_despesa || (receitaTotal * 0.92);
+      const despesaTotal = school.total_despesa || (receitaTotal * 0.95); // Estimativa de custo baseada na receita caso não haja despesa lançada
       const saldo = receitaTotal - despesaTotal;
       const cobertura = despesaTotal > 0 ? receitaTotal / despesaTotal : 1;
       const custoAluno = (school.total_matriculas || 0) > 0 ? despesaTotal / school.total_matriculas : 0;
@@ -96,10 +97,15 @@ export default function DashboardPage() {
       };
     });
 
-    const totalSaldo = schoolAnalyses.reduce((acc, s) => acc + s.saldo, 0);
-    const deficitCount = schoolAnalyses.filter(s => s.status === 'deficit').length;
-    const avgCusto = schoolAnalyses.length > 0 ? schoolAnalyses.reduce((acc, s) => acc + s.custoAluno, 0) / schoolAnalyses.length : 0;
-    const totalReceitaRede = schoolAnalyses.reduce((acc, s) => acc + s.receitaTotal, 0);
+    // MÉTRICAS DA REDE MUNICIPAL (Sempre municipal para consistência de financiamento)
+    const totalMatriculasRede = municipalSchools.reduce((acc, s: any) => acc + (s.total_matriculas || 0), 0);
+    const totalETIRede = municipalSchools.reduce((acc, s: any) => acc + (s.total_eti || 0), 0);
+    
+    // Calcula métricas para as escolas visíveis no filtro
+    const currentTotalSaldo = schoolAnalyses.reduce((acc, s) => acc + s.saldo, 0);
+    const currentDeficitCount = schoolAnalyses.filter(s => s.status === 'deficit').length;
+    const currentAvgCusto = schoolAnalyses.length > 0 ? schoolAnalyses.reduce((acc, s) => acc + s.custoAluno, 0) / schoolAnalyses.length : 0;
+    const currentTotalReceita = schoolAnalyses.reduce((acc, s) => acc + s.receitaTotal, 0);
 
     return {
       analysis: schoolAnalyses,
@@ -107,10 +113,10 @@ export default function DashboardPage() {
         totalMatriculasRede,
         totalETIRede,
         percentualETI: totalMatriculasRede > 0 ? (totalETIRede / totalMatriculasRede) * 100 : 0,
-        totalSaldo,
-        deficitCount,
-        avgCusto,
-        receitaAlunoMedio: totalMatriculasRede > 0 ? totalReceitaRede / totalMatriculasRede : 0
+        totalSaldo: currentTotalSaldo,
+        deficitCount: currentDeficitCount,
+        avgCusto: currentAvgCusto,
+        receitaAlunoMedio: currentTotalReceita / (schoolAnalyses.reduce((acc, s) => acc + (s.total_matriculas || 0), 0) || 1)
       }
     };
   }, [schools, parametros, filterLocalizacao, filterDependencia]);
@@ -173,13 +179,13 @@ export default function DashboardPage() {
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-headline font-bold text-primary">Diagnóstico: {profile?.municipio}</h2>
-          <p className="text-muted-foreground">Visão geral do exercício fiscal 2026 (Rede Municipal)</p>
+          <p className="text-muted-foreground">Visão geral do exercício fiscal 2026 (Filtro Central: Municipal)</p>
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border shadow-sm">
             <Filter className="h-4 w-4 text-muted-foreground" />
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Entidade:</span>
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Local:</span>
             <Select value={filterLocalizacao} onValueChange={setFilterLocalizacao}>
               <SelectTrigger className="h-8 w-[120px] border-none shadow-none focus:ring-0 text-xs font-bold">
                 <SelectValue placeholder="Localização" />
@@ -200,7 +206,7 @@ export default function DashboardPage() {
                 <SelectValue placeholder="Dependência" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="3">Municipal (Padrão)</SelectItem>
+                <SelectItem value="3">Municipal (Alvo)</SelectItem>
                 <SelectItem value="1">Federal</SelectItem>
                 <SelectItem value="2">Estadual</SelectItem>
                 <SelectItem value="4">Privada</SelectItem>
@@ -211,7 +217,7 @@ export default function DashboardPage() {
 
           <Button onClick={handleGenerateReport} disabled={isGenerating} size="sm" className="gap-2 bg-accent hover:bg-accent/90">
             <Sparkles className="h-4 w-4" /> 
-            {isGenerating ? "Analisando..." : "Análise IA"}
+            {isGenerating ? "Analisando..." : "Gerar Narrativa IA"}
           </Button>
         </div>
       </div>
@@ -221,26 +227,26 @@ export default function DashboardPage() {
           title="Matrículas Municipais" 
           value={stats?.totalMatriculasRede.toLocaleString() || "0"} 
           icon={Users}
-          subtitle="Apenas rede própria"
+          subtitle="Rede direta da prefeitura"
         />
         <KPICard 
           title="Alunos em ETI" 
           value={`${stats?.percentualETI.toFixed(1)}%`} 
           icon={GraduationCap}
-          subtitle={`${stats?.totalETIRede} alunos em tempo integral`}
+          subtitle={`${stats?.totalETIRede} alunos municipais integrais`}
         />
         <KPICard 
-          title="Saldo da Rede" 
+          title="Saldo Estimado" 
           value={`R$ ${((stats?.totalSaldo || 0) / 1000).toFixed(1)}k`} 
           icon={DollarSign}
-          subtitle={stats?.totalSaldo! >= 0 ? "Superávit projetado" : "Déficit projetado"}
+          subtitle={stats?.totalSaldo! >= 0 ? "Superávit Projetado" : "Déficit Projetado"}
           className={stats?.totalSaldo! >= 0 ? "bg-green-50/50" : "bg-red-50/50"}
         />
         <KPICard 
-          title="Escolas em Déficit" 
+          title="Alerta de Déficit" 
           value={stats?.deficitCount || 0} 
           icon={AlertCircle}
-          subtitle={`De ${analysis.length} unidades municipais`}
+          subtitle={`Unidades no cenário crítico`}
           className={stats?.deficitCount! > 0 ? "bg-orange-50/50" : ""}
         />
       </div>
@@ -248,9 +254,9 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="font-headline text-lg">Diagnóstico por Escola</CardTitle>
+            <CardTitle className="font-headline text-lg">Ranking de Eficiência Escolar</CardTitle>
             <CardDescription>
-              Filtro atual: {filterDependencia === '3' ? 'Rede Municipal' : 'Rede Customizada'}
+              Comparativo Receita vs Custo (Base VAAf + PNAE 2026)
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -261,7 +267,7 @@ export default function DashboardPage() {
                   <TableHead className="text-right">Receita/Aluno</TableHead>
                   <TableHead className="text-right">Custo/Aluno</TableHead>
                   <TableHead className="text-right">% ETI</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead>Situação</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -273,7 +279,7 @@ export default function DashboardPage() {
                         <div className="text-[10px] text-muted-foreground uppercase flex gap-2">
                           <span className="font-bold">{String(school.localizacao).toUpperCase()}</span>
                           <span>•</span>
-                          <span>{DEPENDENCIA_LABELS[String(school.tp_dependencia)] || school.tp_dependencia}</span>
+                          <span>{DEPENDENCIA_LABELS[String(school.tp_dependencia)] || "N/A"}</span>
                         </div>
                       </TableCell>
                       <TableCell className="text-right text-xs">R$ {school.receitaAluno.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
@@ -289,7 +295,7 @@ export default function DashboardPage() {
                 ) : (
                   <TableRow>
                     <TableCell colSpan={5} className="h-24 text-center text-muted-foreground italic">
-                      Nenhuma unidade encontrada para os filtros selecionados.
+                      Nenhuma escola municipal encontrada.
                     </TableCell>
                   </TableRow>
                 )}
@@ -298,27 +304,27 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="flex flex-col">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 font-headline text-lg">
-              <Sparkles className="h-5 w-5 text-accent" />
-              Relatório IA
+        <Card className="flex flex-col border-accent/20">
+          <CardHeader className="bg-accent/5">
+            <CardTitle className="flex items-center gap-2 font-headline text-lg text-accent">
+              <Sparkles className="h-5 w-5" />
+              Relatório Narrativo IA
             </CardTitle>
           </CardHeader>
-          <CardContent className="flex-1">
+          <CardContent className="flex-1 pt-6">
             {report ? (
               <ScrollArea className="h-[400px] pr-4">
-                <div className="text-xs space-y-4 whitespace-pre-wrap font-body leading-relaxed">
+                <div className="text-xs space-y-4 whitespace-pre-wrap font-body leading-relaxed text-muted-foreground">
                   {report}
                 </div>
               </ScrollArea>
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-4 border-2 border-dashed rounded-lg">
                 <FileText className="h-10 w-10 text-muted-foreground/30" />
-                <p className="text-muted-foreground text-xs">
-                  {isGenerating ? "Processando microdados..." : "Gere o diagnóstico narrativo da rede municipal."}
+                <p className="text-muted-foreground text-xs leading-relaxed">
+                  {isGenerating ? "Analisando microdados fiscais..." : "Clique em 'Gerar Narrativa IA' para obter um diagnóstico financeiro textual completo da rede municipal."}
                 </p>
-                {!isGenerating && <Button onClick={handleGenerateReport} size="sm" disabled={analysis.length === 0}>Gerar Agora</Button>}
+                {!isGenerating && <Button onClick={handleGenerateReport} size="sm" disabled={analysis.length === 0} variant="outline" className="border-accent text-accent hover:bg-accent/5">Processar Agora</Button>}
               </div>
             )}
           </CardContent>

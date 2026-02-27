@@ -36,6 +36,7 @@ export default function ReceitasPage() {
     const totalMatriculasRede = municipalSchools.reduce((acc, s: any) => acc + (s.total_matriculas || 0), 0);
 
     const revenueList = municipalSchools.map((school: any) => {
+      // Garante objeto de matrículas para evitar erros de undefined no cálculo
       const schoolMatriculas = school.matriculas || {
         creche_integral: 0, creche_parcial: 0, creche_conveniada_int: 0, creche_conveniada_par: 0,
         pre_integral: 0, pre_parcial: 0, ef_ai_integral: 0, ef_ai_parcial: 0, ef_af_integral: 0, ef_af_parcial: 0,
@@ -124,11 +125,11 @@ export default function ReceitasPage() {
         </Card>
         <Card className="border-none shadow-md">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase">Repasse VAAT</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase">Repasse PNAE</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">R$ {totals?.vaat.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</div>
-            <p className="text-xs text-muted-foreground mt-1">VAAT estimado para {schoolsRevenue.length} unidades</p>
+            <div className="text-2xl font-bold">R$ {totals?.pnae.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</div>
+            <p className="text-xs text-muted-foreground mt-1">Alimentação Escolar baseada em matrículas</p>
           </CardContent>
         </Card>
       </div>
@@ -136,7 +137,7 @@ export default function ReceitasPage() {
       <Card className="border-none shadow-md">
         <CardHeader>
           <CardTitle className="text-lg">Detalhamento por Unidade Municipal</CardTitle>
-          <CardDescription>Cálculos baseados em matrículas municipais do censo</CardDescription>
+          <CardDescription>Cálculos baseados em parâmetros VAAf e PNAE 2026</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="rounded-xl border overflow-hidden">
@@ -144,9 +145,9 @@ export default function ReceitasPage() {
               <TableHeader className="bg-muted/50">
                 <TableRow>
                   <TableHead>Escola</TableHead>
-                  <TableHead className="text-right">VAAF</TableHead>
-                  <TableHead className="text-right">VAAT</TableHead>
-                  <TableHead className="text-right">PNAE</TableHead>
+                  <TableHead className="text-right">VAAF (Fundeb)</TableHead>
+                  <TableHead className="text-right">VAAT (Complemento)</TableHead>
+                  <TableHead className="text-right">PNAE (Alimento)</TableHead>
                   <TableHead className="text-right">MDE Líq.</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                 </TableRow>
@@ -164,7 +165,7 @@ export default function ReceitasPage() {
                 ))}
               </TableBody>
               <TableFooter className="bg-primary/5">
-                <TableRow className="font-bold">
+                <TableRow className="font-bold text-sm">
                   <TableCell>Total Rede Municipal</TableCell>
                   <TableCell className="text-right">R$ {totals?.vaaf.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
                   <TableCell className="text-right">R$ {totals?.vaat.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
@@ -179,7 +180,7 @@ export default function ReceitasPage() {
           <div className="mt-6 p-4 bg-blue-50/50 border border-blue-100 rounded-xl flex gap-3 text-sm text-blue-800">
             <Info className="h-5 w-5 shrink-0 text-blue-600" />
             <p>
-              Esta visualização considera exclusivamente a **Rede Municipal (Dependência 3)**. Escolas federais, estaduais ou privadas situadas no território não são computadas nas receitas geridas pela prefeitura.
+              Esta visualização considera exclusivamente a **Rede Municipal (Dependência 3)**. O cálculo reflete o **VAAf Base Municipal** e o **PNAE Ajustado** conforme os parâmetros de financiamento definidos para {profile?.municipio}.
             </p>
           </div>
         </CardContent>
