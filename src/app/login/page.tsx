@@ -3,7 +3,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { GraduationCap, Loader2, Lock, Mail, ShieldCheck, MapPin } from "lucide-react"
+import { GraduationCap, Loader2, Lock, Mail, ShieldCheck, MapPin, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -29,7 +29,14 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!auth) return
+    if (!auth) {
+      toast({
+        title: "Erro de inicialização",
+        description: "O serviço de autenticação não está pronto. Verifique o console.",
+        variant: "destructive",
+      })
+      return
+    }
     setLoading(true)
 
     try {
@@ -40,9 +47,10 @@ export default function LoginPage() {
       })
       router.push("/dashboard")
     } catch (error: any) {
+      console.error("Erro no login:", error)
       toast({
         title: "Erro no login",
-        description: "Verifique suas credenciais e tente novamente.",
+        description: error.message || "Verifique suas credenciais.",
         variant: "destructive",
       })
     } finally {
@@ -51,16 +59,26 @@ export default function LoginPage() {
   }
 
   const handleSeedAdmin = async () => {
-    if (!auth || !db) return
+    if (!auth || !db) {
+      toast({
+        title: "Serviços indisponíveis",
+        description: "Firebase não inicializado corretamente. Verifique sua configuração.",
+        variant: "destructive",
+      })
+      return
+    }
     setSeeding(true)
     
     const adminEmail = "castroalvesneto@gmail.com"
     const adminPass = "paix2018+"
 
     try {
+      console.log("Tentando criar usuário no Auth...");
       const userCredential = await createUserWithEmailAndPassword(auth, adminEmail, adminPass)
       const user = userCredential.user
+      console.log("Usuário criado no Auth. UID:", user.uid);
 
+      console.log("Tentando criar perfil no Firestore...");
       // Criar Perfil no Firestore com município padrão para teste
       await setDoc(doc(db, "users", user.uid), {
         name: "Administrador Geral",
@@ -71,6 +89,7 @@ export default function LoginPage() {
         status: "Ativo",
         createdAt: new Date().toISOString()
       })
+      console.log("Perfil criado no Firestore com sucesso.");
 
       toast({
         title: "Administrador Criado!",
@@ -80,15 +99,18 @@ export default function LoginPage() {
       setEmail(adminEmail)
       setPassword(adminPass)
     } catch (error: any) {
+      console.error("Erro no seeding:", error);
       if (error.code === 'auth/email-already-in-use') {
         toast({
           title: "Atenção",
           description: "Este administrador já está cadastrado. Tente fazer o login.",
         })
+        setEmail(adminEmail)
+        setPassword(adminPass)
       } else {
         toast({
           title: "Erro na configuração",
-          description: error.message,
+          description: error.message || "Ocorreu um erro desconhecido.",
           variant: "destructive",
         })
       }

@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import { Database, FileUp, CheckCircle2, FileText, Info, Loader2, Search, FilterX, Globe, Building2, Eye, MapPin } from "lucide-react";
+import { Database, FileUp, CheckCircle2, FileText, Info, Loader2, Search, FilterX, Globe, Building2, Eye, MapPin, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -39,13 +39,6 @@ interface ParsedSchool {
   percentual_eti: number;
   raw_data: Record<string, string>;
 }
-
-const DEPENDENCIA_LABELS: Record<string, string> = {
-  "1": "Federal",
-  "2": "Estadual",
-  "3": "Municipal",
-  "4": "Privada",
-};
 
 export default function CensoAdminPage() {
   const { toast } = useToast();
