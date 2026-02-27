@@ -13,6 +13,10 @@ import { MOCK_SCHOOLS } from "@/lib/constants";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useAuth, useFirestore, useUser, useDoc, useCollection } from "@/firebase";
+import { doc, setDoc, collection, addDoc, query, where } from "firebase/firestore";
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 const EXPENSE_CATEGORIES = [
   "Pessoal — Docentes",
@@ -37,21 +41,83 @@ export default function DespesasPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedSchool, setSelectedSchool] = useState(MOCK_SCHOOLS[0].id);
   const [isImporting, setIsImporting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   
-  // Estado para armazenar despesas (mock inicial + novos lançamentos)
+  // Firebase
+  const auth = useAuth();
+  const db = useFirestore();
+  const { user } = useUser(auth);
+  const userProfileRef = useMemo(() => (db && user ? doc(db, 'users', user.uid) : null), [db, user]);
+  const { data: profile } = useDoc(userProfileRef);
+  const municipioId = profile?.municipioId;
+
+  // Estado para armazenar despesas (lançamentos temporários da sessão)
   const [expenses, setExpenses] = useState<SchoolExpenseEntry[]>([]);
 
-  const handleSave = () => {
-    toast({
-      title: "Despesas salvas",
-      description: "O histórico financeiro da escola foi atualizado com sucesso.",
-    });
+  const handleSave = async () => {
+    if (!db || !municipioId) {
+      toast({
+        title: "Erro de Contexto",
+        description: "Município de atuação não identificado no seu perfil.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const schoolEntries = expenses.filter(e => e.schoolId === selectedSchool);
+    if (schoolEntries.length === 0) {
+      toast({
+        title: "Nenhum dado",
+        description: "Lance pelo menos uma categoria de despesa.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsSaving(true);
+    
+    try {
+      const promises = schoolEntries.map(entry => {
+        // Criamos um ID baseado na escola e categoria para evitar duplicatas simples (ou usamos addDoc para histórico)
+        // No modelo ETI, geralmente consolidamos por exercício
+        const expenseId = `${entry.schoolId}_${entry.category.replace(/\s+/g, '_')}_2026`;
+        const expenseRef = doc(db, 'municipios', municipioId, 'expenses', expenseId);
+        
+        const data = {
+          schoolId: entry.schoolId,
+          category: entry.category,
+          value: entry.value,
+          year: 2026,
+          updatedAt: new Date().toISOString()
+        };
+
+        return setDoc(expenseRef, data, { merge: true })
+          .catch(async (error) => {
+            const permissionError = new FirestorePermissionError({
+              path: expenseRef.path,
+              operation: 'write',
+              requestResourceData: data,
+            });
+            errorEmitter.emit('permission-error', permissionError);
+          });
+      });
+
+      await Promise.all(promises);
+
+      toast({
+        title: "Despesas salvas",
+        description: "O histórico financeiro da escola foi atualizado no banco de dados.",
+      });
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleDownloadTemplate = () => {
     const headers = ["CO_ENTIDADE", "NO_ENTIDADE", "Categoria", "Valor_Anual"];
     
-    // Criar algumas linhas de exemplo com as escolas do sistema
     const rows = MOCK_SCHOOLS.flatMap(school => 
       EXPENSE_CATEGORIES.slice(0, 3).map(cat => [
         school.codigo_inep,
@@ -94,18 +160,15 @@ export default function DespesasPage() {
       const lines = text.split('\n');
       const newEntries: SchoolExpenseEntry[] = [];
       
-      // Pular cabeçalho
       for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
         
-        // Suporte a vírgula ou ponto e vírgula
         const separator = line.includes(';') ? ';' : ',';
         const [inep, name, category, valueStr] = line.split(separator);
         
         const school = MOCK_SCHOOLS.find(s => s.codigo_inep === inep);
         if (school) {
-          // Tratar formato de moeda brasileiro (0.000,00)
           const cleanValue = (valueStr || "0")
             .replace(/\./g, '')
             .replace(',', '.');
@@ -129,16 +192,25 @@ export default function DespesasPage() {
       } else {
         toast({
           title: "Atenção",
-          description: "Nenhum dado válido encontrado no arquivo. Verifique se os códigos INEP correspondem às escolas cadastradas.",
+          description: "Nenhum dado válido encontrado no arquivo.",
           variant: "destructive"
         });
       }
 
-      // Resetar input
       if (fileInputRef.current) fileInputRef.current.value = "";
     };
 
     reader.readAsText(file);
+  };
+
+  const handleUpdateValue = (category: string, val: string) => {
+    const cleanValue = val.replace(/\./g, '').replace(',', '.');
+    const numericValue = parseFloat(cleanValue) || 0;
+    
+    setExpenses(prev => {
+      const filtered = prev.filter(e => !(e.schoolId === selectedSchool && e.category === category));
+      return [...filtered, { schoolId: selectedSchool, category, value: numericValue }];
+    });
   };
 
   const schoolExpensesSum = useMemo(() => {
@@ -170,7 +242,7 @@ export default function DespesasPage() {
             accept=".csv" 
             onChange={handleImportCSV} 
           />
-          <Button variant="outline" className="gap-2" onClick={() => fileInputRef.current?.click()}>
+          <Button variant="outline" className="gap-2" onClick={() => fileInputRef.current?.click()} disabled={isImporting}>
             {isImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             Importar CSV
           </Button>
@@ -221,7 +293,7 @@ export default function DespesasPage() {
                     </Badge>
                   </div>
                   <div className="pt-2">
-                    <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Total Lançado (Escola)</div>
+                    <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Total Lançado (Sessão)</div>
                     <div className="text-xl font-bold text-primary">
                       R$ {(schoolExpensesSum[selectedSchool] || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </div>
@@ -251,7 +323,7 @@ export default function DespesasPage() {
                   </TableHeader>
                   <TableBody>
                     {EXPENSE_CATEGORIES.map((cat, idx) => {
-                      const existingValue = expenses.find(e => e.schoolId === selectedSchool && e.category === cat)?.value || 0;
+                      const entry = expenses.find(e => e.schoolId === selectedSchool && e.category === cat);
                       return (
                         <TableRow key={idx} className="hover:bg-muted/20">
                           <TableCell className="font-medium">{cat}</TableCell>
@@ -259,11 +331,17 @@ export default function DespesasPage() {
                             <Input 
                               className="text-right font-mono" 
                               placeholder="0,00" 
-                              defaultValue={existingValue > 0 ? existingValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : ""}
+                              value={entry ? entry.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : ""}
+                              onChange={(e) => handleUpdateValue(cat, e.target.value)}
                             />
                           </TableCell>
                           <TableCell>
-                            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive">
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="text-muted-foreground hover:text-destructive"
+                              onClick={() => setExpenses(prev => prev.filter(e => !(e.schoolId === selectedSchool && e.category === cat)))}
+                            >
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </TableCell>
@@ -284,8 +362,9 @@ export default function DespesasPage() {
                 
                 <div className="flex justify-end gap-2">
                   <Button variant="outline" onClick={() => setExpenses(prev => prev.filter(e => e.schoolId !== selectedSchool))}>Limpar Lançamentos</Button>
-                  <Button onClick={handleSave} className="gap-2 shadow-lg shadow-primary/20">
-                    <Save className="h-4 w-4" /> Salvar Detalhamento
+                  <Button onClick={handleSave} className="gap-2 shadow-lg shadow-primary/20" disabled={isSaving}>
+                    {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                    {isSaving ? "Salvando..." : "Salvar no Banco"}
                   </Button>
                 </div>
               </CardContent>
@@ -298,7 +377,7 @@ export default function DespesasPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Card className="bg-primary text-white border-none shadow-lg">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-white/70">Custo Total da Rede</CardTitle>
+                  <CardTitle className="text-sm font-medium text-white/70">Custo Total da Rede (Sessão)</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-3xl font-bold">R$ {totalNetworkExpenses.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
@@ -317,7 +396,7 @@ export default function DespesasPage() {
                   <div className="text-2xl font-bold">
                     {Object.keys(schoolExpensesSum).length} / {MOCK_SCHOOLS.length}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2">Unidades com despesas lançadas</p>
+                  <p className="text-xs text-muted-foreground mt-2">Unidades com despesas na sessão</p>
                 </CardContent>
               </Card>
 
@@ -331,7 +410,7 @@ export default function DespesasPage() {
                       ? (totalNetworkExpenses / MOCK_SCHOOLS.reduce((acc, s) => acc + s.total_matriculas, 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
                       : "0,00"}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2">Base: Lançamentos efetivados</p>
+                  <p className="text-xs text-muted-foreground mt-2">Base: Lançamentos temporários</p>
                 </CardContent>
               </Card>
             </div>

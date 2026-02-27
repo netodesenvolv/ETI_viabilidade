@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useRef, useMemo } from "react";
@@ -19,6 +20,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { useAuth, useFirestore, useUser, useDoc } from "@/firebase";
+import { doc, setDoc, collection } from "firebase/firestore";
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 interface ParsedSchool {
   id: string;
@@ -45,11 +50,20 @@ export default function CensoAdminPage() {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [consolidating, setConsolidating] = useState(false);
   const [progress, setProgress] = useState(0);
   const [step, setStep] = useState(1);
   const [parsedSchools, setParsedSchools] = useState<ParsedSchool[]>([]);
   const [fileName, setFileName] = useState<string | null>(null);
   
+  // Firebase Auth & Profile
+  const auth = useAuth();
+  const db = useFirestore();
+  const { user } = useUser(auth);
+  const userProfileRef = useMemo(() => (db && user ? doc(db, 'users', user.uid) : null), [db, user]);
+  const { data: profile } = useDoc(userProfileRef);
+  const municipioId = profile?.municipioId;
+
   // Filtros de UI
   const [searchQuery, setSearchQuery] = useState("");
   const [municipioFilter, setMunicipioFilter] = useState("");
@@ -88,6 +102,7 @@ export default function CensoAdminPage() {
       const parseNum = (val: any) => parseInt(val || "0", 10);
 
       const total_matriculas = parseNum(row.QT_MAT_BAS);
+      // Cálculo de ETI baseado nas colunas do Censo
       const total_eti = parseNum(row.QT_MAT_INF_INT) + parseNum(row.QT_MAT_FUND_INT) + parseNum(row.QT_MAT_MED_INT);
       
       const schoolData: ParsedSchool = {
@@ -186,6 +201,63 @@ export default function CensoAdminPage() {
     };
   }, [filteredData]);
 
+  const handleConsolidate = async () => {
+    if (!db || !municipioId) {
+      toast({
+        title: "Erro de Contexto",
+        description: "Município de atuação não identificado no seu perfil.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (filteredData.length === 0) return;
+
+    setConsolidating(true);
+    
+    try {
+      // Como estamos enviando múltiplos registros, iteramos sobre eles.
+      // Em produção, isso poderia ser otimizado com writeBatch se forem muitos.
+      const promises = filteredData.map(school => {
+        const schoolRef = doc(db, 'municipios', municipioId, 'schools', school.id);
+        const data = {
+          codigo_inep: school.codigo_inep,
+          nome: school.nome,
+          total_matriculas: school.total_matriculas,
+          total_eti: school.total_eti,
+          percentual_eti: school.percentual_eti,
+          localizacao: school.localizacao.toLowerCase() === "rural" ? "rural" : "urbana",
+          updatedAt: new Date().toISOString()
+        };
+
+        return setDoc(schoolRef, data, { merge: true })
+          .catch(async (error) => {
+            const permissionError = new FirestorePermissionError({
+              path: schoolRef.path,
+              operation: 'write',
+              requestResourceData: data,
+            });
+            errorEmitter.emit('permission-error', permissionError);
+          });
+      });
+
+      await Promise.all(promises);
+
+      toast({
+        title: "Dados Consolidados",
+        description: `${filteredData.length} escolas foram salvas no município ${profile?.municipio}.`,
+      });
+      
+      setStep(1);
+      setParsedSchools([]);
+      setFileName(null);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setConsolidating(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -239,7 +311,7 @@ export default function CensoAdminPage() {
 
             <Button 
               className="w-full gap-2 font-semibold shadow-lg shadow-primary/20" 
-              disabled={uploading || !fileName} 
+              disabled={uploading || !fileName || consolidating} 
               onClick={handleStartImport}
             >
               {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
@@ -425,8 +497,13 @@ export default function CensoAdminPage() {
                         <p className="text-green-700 text-xs">Análise de {stats?.municipios} municípios e {filteredData.length} escolas selecionada.</p>
                       </div>
                     </div>
-                    <Button className="bg-green-700 hover:bg-green-800 text-white border-none shadow-lg shadow-green-900/20">
-                      Consolidar no Banco de Dados
+                    <Button 
+                      onClick={handleConsolidate} 
+                      disabled={consolidating}
+                      className="bg-green-700 hover:bg-green-800 text-white border-none shadow-lg shadow-green-900/20"
+                    >
+                      {consolidating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                      {consolidating ? "Consolidando..." : "Consolidar no Banco de Dados"}
                     </Button>
                   </div>
                 )}
