@@ -1,9 +1,8 @@
-
 "use client"
 
 import { useState, useMemo } from "react";
 import { KPICard } from "@/components/dashboard/kpi-card";
-import { Users, GraduationCap, DollarSign, AlertCircle, TrendingUp, Sparkles, FileText, Download, Loader2, Filter } from "lucide-react";
+import { Users, GraduationCap, DollarSign, AlertCircle, TrendingUp, Sparkles, FileText, Download, Loader2, Filter, Layers } from "lucide-react";
 import { DEFAULT_PARAMETERS } from "@/lib/constants";
 import { calcularVAAF, calcularVAAT, calcularPNAE, calcularMDE, calcularOutros } from "@/lib/calculations";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -17,11 +16,19 @@ import { useAuth, useFirestore, useUser, useDoc, useCollection } from "@/firebas
 import { doc, collection } from "firebase/firestore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
+const DEPENDENCIA_LABELS: Record<string, string> = {
+  "1": "Federal",
+  "2": "Estadual",
+  "3": "Municipal",
+  "4": "Privada"
+};
+
 export default function DashboardPage() {
   const { toast } = useToast();
   const [isGenerating, setIsGenerating] = useState(false);
   const [report, setReport] = useState<string | null>(null);
   const [filterLocalizacao, setFilterLocalizacao] = useState<string>("todas");
+  const [filterDependencia, setFilterDependencia] = useState<string>("todas");
 
   const auth = useAuth();
   const db = useFirestore();
@@ -41,10 +48,12 @@ export default function DashboardPage() {
   const { analysis, stats } = useMemo(() => {
     if (!schools || schools.length === 0) return { analysis: [], stats: null };
 
-    // Filtro por tipo de entidade (Localização)
-    const filteredSchools = schools.filter(s => 
-      filterLocalizacao === "todas" ? true : s.localizacao === filterLocalizacao
-    );
+    // Filtro combinado (Localização e Dependência)
+    const filteredSchools = schools.filter(s => {
+      const matchesLocalizacao = filterLocalizacao === "todas" ? true : s.localizacao === filterLocalizacao;
+      const matchesDependencia = filterDependencia === "todas" ? true : String(s.tp_dependencia) === filterDependencia;
+      return matchesLocalizacao && matchesDependencia;
+    });
 
     if (filteredSchools.length === 0) return { analysis: [], stats: null };
 
@@ -104,7 +113,7 @@ export default function DashboardPage() {
         receitaAlunoMedio: totalMatriculasRede > 0 ? totalReceitaRede / totalMatriculasRede : 0
       }
     };
-  }, [schools, parametros, filterLocalizacao]);
+  }, [schools, parametros, filterLocalizacao, filterDependencia]);
 
   const handleGenerateReport = async () => {
     if (!stats) return;
@@ -183,17 +192,36 @@ export default function DashboardPage() {
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
+          {/* Filtro de Localização */}
           <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border shadow-sm">
             <Filter className="h-4 w-4 text-muted-foreground" />
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Entidade:</span>
             <Select value={filterLocalizacao} onValueChange={setFilterLocalizacao}>
-              <SelectTrigger className="h-8 w-[140px] border-none shadow-none focus:ring-0 text-xs font-bold">
+              <SelectTrigger className="h-8 w-[120px] border-none shadow-none focus:ring-0 text-xs font-bold">
                 <SelectValue placeholder="Localização" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="todas">Todas Unidades</SelectItem>
+                <SelectItem value="todas">Todas</SelectItem>
                 <SelectItem value="urbana">Urbana</SelectItem>
                 <SelectItem value="rural">Rural</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Filtro de Dependência */}
+          <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border shadow-sm">
+            <Layers className="h-4 w-4 text-muted-foreground" />
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Rede:</span>
+            <Select value={filterDependencia} onValueChange={setFilterDependencia}>
+              <SelectTrigger className="h-8 w-[140px] border-none shadow-none focus:ring-0 text-xs font-bold">
+                <SelectValue placeholder="Dependência" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todas</SelectItem>
+                <SelectItem value="1">Federal</SelectItem>
+                <SelectItem value="2">Estadual</SelectItem>
+                <SelectItem value="3">Municipal</SelectItem>
+                <SelectItem value="4">Privada</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -215,7 +243,7 @@ export default function DashboardPage() {
           title="Matrículas Filtradas" 
           value={stats?.totalMatriculasRede.toLocaleString() || "0"} 
           icon={Users}
-          subtitle={filterLocalizacao === "todas" ? "Rede Municipal" : `Unidades ${filterLocalizacao}`}
+          subtitle="Critérios de filtro ativos"
         />
         <KPICard 
           title="Alunos em ETI" 
@@ -234,7 +262,7 @@ export default function DashboardPage() {
           title="Escolas em Déficit" 
           value={stats?.deficitCount || 0} 
           icon={AlertCircle}
-          subtitle={`De ${analysis.length} unidades no filtro`}
+          subtitle={`De ${analysis.length} unidades filtradas`}
           className={stats?.deficitCount! > 0 ? "bg-orange-50/50" : ""}
         />
       </div>
@@ -244,9 +272,7 @@ export default function DashboardPage() {
           <CardHeader>
             <CardTitle className="font-headline">Diagnóstico por Escola</CardTitle>
             <CardDescription>
-              {filterLocalizacao === "todas" 
-                ? "Resumo financeiro de toda a rede" 
-                : `Exibindo apenas unidades de localização ${filterLocalizacao}`}
+              Resultados financeiros detalhados por unidade dentro dos filtros selecionados
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -265,7 +291,11 @@ export default function DashboardPage() {
                   <TableRow key={school.id}>
                     <TableCell>
                       <div className="font-medium text-sm">{school.nome}</div>
-                      <div className="text-[10px] text-muted-foreground uppercase">{school.localizacao}</div>
+                      <div className="text-[10px] text-muted-foreground uppercase flex gap-2">
+                        <span>{school.localizacao}</span>
+                        <span>•</span>
+                        <span>{DEPENDENCIA_LABELS[school.tp_dependencia] || "Dependência " + school.tp_dependencia}</span>
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">R$ {school.receitaAluno.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
                     <TableCell className="text-right">R$ {school.custoAluno.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>

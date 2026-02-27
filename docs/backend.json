@@ -1,4 +1,3 @@
-
 {
   "entities": {
     "UserProfile": {
@@ -24,7 +23,8 @@
         "total_matriculas": { "type": "number" },
         "total_eti": { "type": "number" },
         "percentual_eti": { "type": "number" },
-        "localizacao": { "type": "string", "enum": ["urbana", "rural"] }
+        "localizacao": { "type": "string", "enum": ["urbana", "rural"] },
+        "tp_dependencia": { "type": "string", "description": "Código de dependência (1-Federal, 2-Estadual, 3-Municipal, 4-Privada)" }
       }
     },
     "Expense": {

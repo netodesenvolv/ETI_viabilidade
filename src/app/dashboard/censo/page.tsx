@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useRef, useMemo } from "react";
@@ -46,7 +45,6 @@ export default function CensoAdminPage() {
   const { data: profile } = useDoc(userProfileRef);
   const municipioId = profile?.municipioId;
 
-  // Campos para preenchimento manual se perfil estiver vazio
   const [manualCity, setManualCity] = useState("");
   const [manualIbge, setManualIbge] = useState("");
   const [linking, setLinking] = useState(false);
@@ -93,7 +91,7 @@ export default function CensoAdminPage() {
         municipio: row.NO_MUNICIPIO || "N/A",
         uf: row.SG_UF || "N/A",
         localizacao: row.TP_LOCALIZACAO === "2" ? "Rural" : "Urbana",
-        tp_dependencia: row.TP_DEPENDENCIA || "0",
+        tp_dependencia: row.TP_DEPENDENCIA || "3", // Default para municipal se vazio
         total_matriculas,
         total_eti,
         percentual_eti: total_matriculas > 0 ? Number(((total_eti / total_matriculas) * 100).toFixed(1)) : 0,
@@ -136,6 +134,7 @@ export default function CensoAdminPage() {
           total_eti: school.total_eti,
           percentual_eti: school.percentual_eti,
           localizacao: school.localizacao.toLowerCase() === "rural" ? "rural" : "urbana",
+          tp_dependencia: school.tp_dependencia,
           updatedAt: new Date().toISOString()
         };
         return setDoc(schoolRef, data, { merge: true }).catch(async () => {

@@ -30,6 +30,7 @@ export interface School {
   codigo_inep: string;
   nome: string;
   localizacao: 'urbana' | 'rural';
+  tp_dependencia: string;
   matriculas: EnrollmentCounts;
   total_matriculas: number;
   total_eti: number;
