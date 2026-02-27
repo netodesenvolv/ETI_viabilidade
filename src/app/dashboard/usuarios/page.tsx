@@ -1,0 +1,126 @@
+
+"use client"
+
+import { useState } from "react"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { UserPlus, UserCog, Mail, Shield, Trash2, Search } from "lucide-react"
+import { Input } from "@/components/ui/input"
+
+const MOCK_USERS = [
+  { id: "1", name: "Ricardo Silva", email: "ricardo.silva@prefeitura.gov.br", role: "Admin", status: "Ativo" },
+  { id: "2", name: "Maria Oliveira", email: "maria.educacao@prefeitura.gov.br", role: "Editor", status: "Ativo" },
+  { id: "3", name: "João Santos", email: "joao.financas@prefeitura.gov.br", role: "Leitor", status: "Inativo" },
+]
+
+export default function UsuariosPage() {
+  const [searchTerm, setSearchTerm] = useState("")
+
+  const filteredUsers = MOCK_USERS.filter(user => 
+    user.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    user.email.toLowerCase().includes(searchTerm.toLowerCase())
+  )
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-3xl font-headline font-bold text-primary">Gerenciamento de Usuários</h2>
+          <p className="text-muted-foreground">Controle quem tem acesso e quais as permissões na plataforma</p>
+        </div>
+        <Button className="gap-2">
+          <UserPlus className="h-4 w-4" /> Novo Usuário
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <Card className="lg:col-span-1 h-fit">
+          <CardHeader>
+            <CardTitle className="text-lg">Perfis de Acesso</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="p-3 border rounded-lg bg-muted/30">
+              <div className="flex items-center gap-2 mb-1">
+                <Shield className="h-4 w-4 text-primary" />
+                <span className="text-sm font-bold">Administrador</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground">Acesso total ao sistema, parâmetros e gestão de usuários.</p>
+            </div>
+            <div className="p-3 border rounded-lg bg-muted/30">
+              <div className="flex items-center gap-2 mb-1">
+                <UserCog className="h-4 w-4 text-accent" />
+                <span className="text-sm font-bold">Editor</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground">Pode importar o Censo, lançar despesas e usar simuladores.</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-3">
+          <CardHeader>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <CardTitle className="text-lg">Lista de Acessos</CardTitle>
+              <div className="relative w-full md:w-64">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input 
+                  placeholder="Buscar usuário..." 
+                  className="pl-9 h-9"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Usuário</TableHead>
+                  <TableHead>Perfil</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredUsers.map((user) => (
+                  <TableRow key={user.id}>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="font-medium">{user.name}</span>
+                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Mail className="h-3 w-3" /> {user.email}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={user.role === 'Admin' ? 'default' : 'secondary'}>
+                        {user.role}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={user.status === 'Ativo' ? 'bg-green-100 text-green-700 hover:bg-green-100 border-green-200' : 'bg-muted text-muted-foreground border-transparent'}>
+                        {user.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <UserCog className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  )
+}

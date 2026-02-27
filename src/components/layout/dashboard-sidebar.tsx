@@ -1,3 +1,4 @@
+
 "use client"
 
 import * as React from "react"
@@ -11,7 +12,8 @@ import {
   FileText,
   Calculator,
   ChevronRight,
-  GraduationCap
+  GraduationCap,
+  Users
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -35,6 +37,7 @@ const menuItems = [
   { title: "Gestão de Despesas", icon: TrendingUp, href: "/dashboard/despesas" },
   { title: "Análise Custo-Aluno", icon: Calculator, href: "/dashboard/analise" },
   { title: "Simulador ETI", icon: GraduationCap, href: "/dashboard/simulador" },
+  { title: "Usuários", icon: Users, href: "/dashboard/usuarios" },
 ]
 
 export function DashboardSidebar() {
