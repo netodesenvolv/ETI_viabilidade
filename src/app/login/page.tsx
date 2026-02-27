@@ -1,16 +1,17 @@
+
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { GraduationCap, Loader2, Lock, Mail, ShieldCheck, MapPin, AlertTriangle } from "lucide-react"
+import { GraduationCap, Loader2, Lock, Mail, ShieldCheck, UserCheck, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth"
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged } from "firebase/auth"
 import { useAuth, useFirestore } from "@/firebase"
-import { doc, setDoc } from "firebase/firestore"
+import { doc, setDoc, getDoc } from "firebase/firestore"
 import { firebaseConfig } from "@/firebase/config"
 import Link from "next/link"
 
@@ -19,6 +20,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [seeding, setSeeding] = useState(false)
+  const [isLogged, setIsLogged] = useState(false)
   const [targetCity, setTargetCity] = useState("Teixeira de Freitas")
   const [targetIbge, setTargetIbge] = useState("2932705")
   const router = useRouter()
@@ -27,40 +29,55 @@ export default function LoginPage() {
   const auth = useAuth()
   const db = useFirestore()
 
+  useEffect(() => {
+    if (!auth) return;
+    return onAuthStateChanged(auth, (user) => {
+      setIsLogged(!!user);
+    });
+  }, [auth]);
+
+  const ensureUserProfile = async (uid: string, userEmail: string) => {
+    if (!db) return;
+    const userRef = doc(db, "users", uid);
+    const userSnap = await getDoc(userRef);
+
+    if (!userSnap.exists()) {
+      console.log("Perfil não encontrado, criando vínculo municipal...");
+      await setDoc(userRef, {
+        name: userEmail.split('@')[0],
+        email: userEmail,
+        role: "Admin",
+        municipio: targetCity,
+        municipioId: targetIbge,
+        status: "Ativo",
+        createdAt: new Date().toISOString()
+      }, { merge: true });
+      return true;
+    }
+    return false;
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!auth) {
-      toast({
-        title: "Erro de inicialização",
-        description: "O serviço de autenticação não está pronto. Verifique o console.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (firebaseConfig.apiKey === "AIzaSy...") {
-      toast({
-        title: "Configuração Pendente",
-        description: "As chaves do Firebase ainda não foram sincronizadas. Por favor, aguarde alguns instantes e atualize a página.",
-        variant: "destructive",
-      })
-      return
+    if (!auth || !db) {
+      toast({ title: "Aguarde", description: "O serviço Firebase está inicializando.", variant: "destructive" });
+      return;
     }
 
     setLoading(true)
-
     try {
-      await signInWithEmailAndPassword(auth, email, password)
+      const userCredential = await signInWithEmailAndPassword(auth, email, password)
+      const created = await ensureUserProfile(userCredential.user.uid, userCredential.user.email!)
+      
       toast({
-        title: "Bem-vindo!",
-        description: "Login realizado com sucesso.",
+        title: "Sucesso",
+        description: created ? `Bem-vindo! Perfil vinculado a ${targetCity}.` : "Acesso liberado.",
       })
       router.push("/dashboard")
     } catch (error: any) {
-      console.error("Erro no login:", error)
       toast({
         title: "Erro no login",
-        description: error.message || "Verifique suas credenciais.",
+        description: "E-mail ou senha inválidos. Certifique-se de habilitar o login por senha no Firebase.",
         variant: "destructive",
       })
     } finally {
@@ -70,64 +87,32 @@ export default function LoginPage() {
 
   const handleSeedAdmin = async () => {
     if (!auth || !db) {
-      toast({
-        title: "Serviços indisponíveis",
-        description: "Firebase não inicializado corretamente.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (firebaseConfig.apiKey === "AIzaSy...") {
-      toast({
-        title: "Chave Inválida",
-        description: "A API Key ainda é um placeholder. O Studio precisa sincronizar o projeto.",
-        variant: "destructive",
-      })
-      return
+      toast({ title: "Erro", description: "Firebase não inicializado.", variant: "destructive" });
+      return;
     }
 
     setSeeding(true)
-    
     const adminEmail = "castroalvesneto@gmail.com"
     const adminPass = "paix2018+"
 
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, adminEmail, adminPass)
-      const user = userCredential.user
-
-      await setDoc(doc(db, "users", user.uid), {
-        name: "Administrador Geral",
-        email: adminEmail,
-        role: "Admin",
-        municipio: targetCity,
-        municipioId: targetIbge,
-        status: "Ativo",
-        createdAt: new Date().toISOString()
-      })
-
-      toast({
-        title: "Administrador Criado!",
-        description: `Perfil configurado para ${targetCity}.`,
-      })
-      
-      setEmail(adminEmail)
-      setPassword(adminPass)
-    } catch (error: any) {
-      console.error("Erro no seeding:", error);
-      if (error.code === 'auth/email-already-in-use') {
-        toast({
-          title: "Atenção",
-          description: "Este administrador já está cadastrado. Tente fazer o login.",
-        })
-        setEmail(adminEmail)
-        setPassword(adminPass)
+      if (isLogged && auth.currentUser) {
+        // Apenas repara o perfil se já estiver logado
+        await ensureUserProfile(auth.currentUser.uid, auth.currentUser.email!);
+        toast({ title: "Perfil Reparado", description: `Vínculo com ${targetCity} estabelecido.` });
+        router.push("/dashboard");
       } else {
-        toast({
-          title: "Erro na configuração",
-          description: error.message || "Verifique se o Auth está ativado no console.",
-          variant: "destructive",
-        })
+        const userCredential = await createUserWithEmailAndPassword(auth, adminEmail, adminPass)
+        await ensureUserProfile(userCredential.user.uid, userCredential.user.email!);
+        toast({ title: "Admin Criado", description: `Usuário ${adminEmail} configurado para ${targetCity}.` });
+        setEmail(adminEmail); setPassword(adminPass);
+      }
+    } catch (error: any) {
+      if (error.code === 'auth/email-already-in-use') {
+        toast({ title: "Atenção", description: "Este e-mail já existe. Tente logar normalmente." });
+        setEmail(adminEmail); setPassword(adminPass);
+      } else {
+        toast({ title: "Erro no Auth", description: error.message, variant: "destructive" });
       }
     } finally {
       setSeeding(false)
@@ -144,7 +129,7 @@ export default function LoginPage() {
             </div>
           </div>
           <CardTitle className="text-2xl font-headline font-bold">EduFin Insights</CardTitle>
-          <CardDescription>Entre com suas credenciais para acessar a plataforma</CardDescription>
+          <CardDescription>Plataforma de Viabilidade Financeira ETI</CardDescription>
         </CardHeader>
         <form onSubmit={handleLogin}>
           <CardContent className="space-y-4">
@@ -152,29 +137,14 @@ export default function LoginPage() {
               <Label htmlFor="email">E-mail</Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input 
-                  id="email" 
-                  type="email" 
-                  placeholder="nome@municipio.gov.br" 
-                  className="pl-10"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required 
-                />
+                <Input id="email" type="email" placeholder="nome@municipio.gov.br" className="pl-10" value={email} onChange={(e) => setEmail(e.target.value)} required />
               </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Senha</Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input 
-                  id="password" 
-                  type="password" 
-                  className="pl-10"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required 
-                />
+                <Input id="password" type="password" className="pl-10" value={password} onChange={(e) => setPassword(e.target.value)} required />
               </div>
             </div>
           </CardContent>
@@ -184,17 +154,13 @@ export default function LoginPage() {
             </Button>
             
             <div className="w-full relative py-2">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-background px-2 text-muted-foreground">Configuração de Teste</span>
-              </div>
+              <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
+              <div className="relative flex justify-center text-xs uppercase"><span className="bg-background px-2 text-muted-foreground">Vínculo Municipal Manual</span></div>
             </div>
 
             <div className="grid grid-cols-2 gap-2 w-full mb-2">
               <div className="space-y-1">
-                <Label className="text-[10px]">Cidade Teste</Label>
+                <Label className="text-[10px]">Nome da Cidade</Label>
                 <Input className="h-7 text-xs" value={targetCity} onChange={e => setTargetCity(e.target.value)} />
               </div>
               <div className="space-y-1">
@@ -203,29 +169,17 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <Button 
-              type="button" 
-              variant="outline" 
-              className="w-full gap-2 border-dashed h-12"
-              onClick={handleSeedAdmin}
-              disabled={loading || seeding}
-            >
-              {seeding ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+            <Button type="button" variant="outline" className="w-full gap-2 border-dashed h-12" onClick={handleSeedAdmin} disabled={loading || seeding}>
+              {seeding ? <Loader2 className="h-4 w-4 animate-spin" /> : isLogged ? <UserCheck className="h-4 w-4 text-green-600" /> : <ShieldCheck className="h-4 w-4" />}
               <div className="text-left">
-                <p className="text-xs font-bold leading-none">Criar Admin & Vincular Cidade</p>
-                <p className="text-[10px] text-muted-foreground">Vínculo necessário para salvar dados</p>
+                <p className="text-xs font-bold leading-none">{isLogged ? "Reparar Vínculo da Conta" : "Criar Admin & Vincular Cidade"}</p>
+                <p className="text-[10px] text-muted-foreground">Configura os metadados de acesso no Firestore</p>
               </div>
             </Button>
-
-            <Link href="/" className="text-xs text-muted-foreground hover:underline mt-2">
-              Voltar para a página inicial
-            </Link>
           </CardFooter>
         </form>
       </Card>
-      <p className="mt-8 text-xs text-muted-foreground max-w-xs text-center">
-        Certifique-se de habilitar o provedor de E-mail/Senha no Console do Firebase antes de criar o admin.
-      </p>
+      {isLogged && <Button variant="link" onClick={() => router.push('/dashboard')} className="mt-4">Ir para Dashboard</Button>}
     </div>
   )
 }
