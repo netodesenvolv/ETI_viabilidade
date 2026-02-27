@@ -37,8 +37,8 @@ interface ParsedSchool {
     ef_af_integral: number;
     ef_af_parcial: number;
     eja_fundamental: number;
+    eja_medio: number;
     especial_aee: number;
-    indigena_quilombola: number;
     campo_rural: number;
   };
 }
@@ -99,19 +99,35 @@ export default function CensoAdminPage() {
       
       const total_matriculas = parseInt(row.QT_MAT_BAS || "0", 10);
       
-      // Mapeamento granular de colunas padrão INEP Microdados
-      const creche_int = parseInt(row.QT_MAT_INF_CRE_INT || "0", 10);
-      const creche_par = parseInt(row.QT_MAT_INF_CRE_PARC || "0", 10);
-      const pre_int = parseInt(row.QT_MAT_INF_PRE_INT || "0", 10);
-      const pre_par = parseInt(row.QT_MAT_INF_PRE_PARC || "0", 10);
-      const ef_ai_int = parseInt(row.QT_MAT_FUND_AI_INT || "0", 10);
-      const ef_ai_par = parseInt(row.QT_MAT_FUND_AI_PARC || "0", 10);
-      const ef_af_int = parseInt(row.QT_MAT_FUND_AF_INT || "0", 10);
-      const ef_af_par = parseInt(row.QT_MAT_FUND_AF_PARC || "0", 10);
-      const eja = parseInt(row.QT_MAT_EJA || "0", 10);
+      // Mapeamento baseado nas colunas fornecidas (Microdados INEP)
+      const qt_inf_cre = parseInt(row.QT_MAT_INF_CRE || "0", 10);
+      const qt_inf_cre_int = parseInt(row.QT_MAT_INF_CRE_INT || "0", 10);
+      
+      const qt_inf_pre = parseInt(row.QT_MAT_INF_PRE || "0", 10);
+      const qt_inf_pre_int = parseInt(row.QT_MAT_INF_PRE_INT || "0", 10);
+      
+      const qt_fund_ai = parseInt(row.QT_MAT_FUND_AI || "0", 10);
+      const qt_fund_ai_int = parseInt(row.QT_MAT_FUND_AI_INT || "0", 10);
+      
+      const qt_fund_af = parseInt(row.QT_MAT_FUND_AF || "0", 10);
+      const qt_fund_af_int = parseInt(row.QT_MAT_FUND_AF_INT || "0", 10);
+      
+      const creche_int = qt_inf_cre_int;
+      const creche_par = Math.max(0, qt_inf_cre - qt_inf_cre_int);
+      
+      const pre_int = qt_inf_pre_int;
+      const pre_par = Math.max(0, qt_inf_pre - qt_inf_pre_int);
+      
+      const ef_ai_int = qt_fund_ai_int;
+      const ef_ai_par = Math.max(0, qt_fund_ai - qt_fund_ai_int);
+      
+      const ef_af_int = qt_fund_af_int;
+      const ef_af_par = Math.max(0, qt_fund_af - qt_fund_af_int);
+      
+      const eja_fund = parseInt(row.QT_MAT_EJA_FUND || "0", 10);
+      const eja_med = parseInt(row.QT_MAT_EJA_MED || "0", 10);
       const especial = parseInt(row.QT_MAT_ESP || "0", 10);
-      const indigena = parseInt(row.QT_MAT_IND_QUILO || "0", 10);
-      const campo = row.TP_LOCALIZACAO === "2" ? total_matriculas : 0;
+      const rural = parseInt(row.QT_MAT_ZR_RUR || "0", 10);
 
       const total_eti = creche_int + pre_int + ef_ai_int + ef_af_int;
       
@@ -135,10 +151,10 @@ export default function CensoAdminPage() {
           ef_ai_parcial: ef_ai_par,
           ef_af_integral: ef_af_int,
           ef_af_parcial: ef_af_par,
-          eja_fundamental: eja,
+          eja_fundamental: eja_fund,
+          eja_medio: eja_med,
           especial_aee: especial,
-          indigena_quilombola: indigena,
-          campo_rural: campo
+          campo_rural: rural
         }
       });
     }

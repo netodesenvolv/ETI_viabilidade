@@ -1,3 +1,4 @@
+
 import { School, FundingParameters, EnrollmentCounts } from "@/types";
 
 /**
@@ -37,23 +38,28 @@ export function calcularVAAT(escola: School, parametros: FundingParameters, tota
 
 /**
  * 3. PNAE — Por tipo de matrícula x dias letivos (200 dias).
- * Valores anuais calculados conforme solicitado.
+ * Valores anuais calculados conforme solicitado (R$ 314 integral / R$ 114 parcial).
  */
-export function calcularPNAE(matriculas: EnrollmentCounts | undefined) {
+export function calcularPNAE(matriculas: EnrollmentCounts | undefined, parametros?: FundingParameters) {
   if (!matriculas) return 0;
   
+  // Se não houver parâmetros passados, usa os valores padrão anuais (314 e 114)
+  const integral_ano = 314;
+  const parcial_ano = 114;
+  const pre_parcial_ano = 164; // R$ 0,82 * 200
+
   return (
-    (matriculas.creche_integral || 0)    * 314 +
-    (matriculas.creche_parcial || 0)     * 114 +
-    (matriculas.pre_integral || 0)       * 314 +
-    (matriculas.pre_parcial || 0)        * 164 +
-    (matriculas.ef_ai_integral || 0)     * 314 +
-    (matriculas.ef_ai_parcial || 0)      * 114 +
-    (matriculas.ef_af_integral || 0)     * 314 +
-    (matriculas.ef_af_parcial || 0)      * 114 +
-    (matriculas.eja_fundamental || 0)    * 114 +
-    (matriculas.eja_medio || 0)          * 114 +
-    (matriculas.especial_aee || 0)       * 114
+    (matriculas.creche_integral || 0)    * integral_ano +
+    (matriculas.creche_parcial || 0)     * parcial_ano +
+    (matriculas.pre_integral || 0)       * integral_ano +
+    (matriculas.pre_parcial || 0)        * pre_parcial_ano +
+    (matriculas.ef_ai_integral || 0)     * integral_ano +
+    (matriculas.ef_ai_parcial || 0)      * parcial_ano +
+    (matriculas.ef_af_integral || 0)     * integral_ano +
+    (matriculas.ef_af_parcial || 0)      * parcial_ano +
+    (matriculas.eja_fundamental || 0)    * parcial_ano +
+    (matriculas.eja_medio || 0)          * parcial_ano +
+    (matriculas.especial_aee || 0)       * parcial_ano
   );
 }
 
