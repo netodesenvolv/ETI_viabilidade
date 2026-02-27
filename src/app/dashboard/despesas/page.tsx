@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useRef, useMemo } from "react";
@@ -7,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Save, FileSpreadsheet, Plus, Trash2, Download, Upload, Loader2, Building2, Landmark, PieChart } from "lucide-react";
+import { Save, FileSpreadsheet, Plus, Trash2, Download, Upload, Loader2, Building2, Landmark, PieChart, FileText } from "lucide-react";
 import { MOCK_SCHOOLS } from "@/lib/constants";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +48,40 @@ export default function DespesasPage() {
     });
   };
 
+  const handleDownloadTemplate = () => {
+    const headers = ["CO_ENTIDADE", "NO_ENTIDADE", "Categoria", "Valor_Anual"];
+    
+    // Criar algumas linhas de exemplo com as escolas do sistema
+    const rows = MOCK_SCHOOLS.flatMap(school => 
+      EXPENSE_CATEGORIES.slice(0, 3).map(cat => [
+        school.codigo_inep,
+        school.nome,
+        cat,
+        "0,00"
+      ])
+    );
+
+    const csvContent = [
+      headers.join(";"),
+      ...rows.map(row => row.join(";"))
+    ].join("\n");
+
+    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "modelo_importacao_despesas_eti.csv");
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    toast({
+      title: "Modelo baixado",
+      description: "Preencha a planilha e utilize o botão Importar CSV.",
+    });
+  };
+
   const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -59,27 +94,48 @@ export default function DespesasPage() {
       const lines = text.split('\n');
       const newEntries: SchoolExpenseEntry[] = [];
       
-      // Simulação de parsing: INEP;Categoria;Valor
+      // Pular cabeçalho
       for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
-        const [inep, category, valueStr] = line.split(';');
+        
+        // Suporte a vírgula ou ponto e vírgula
+        const separator = line.includes(';') ? ';' : ',';
+        const [inep, name, category, valueStr] = line.split(separator);
+        
         const school = MOCK_SCHOOLS.find(s => s.codigo_inep === inep);
         if (school) {
+          // Tratar formato de moeda brasileiro (0.000,00)
+          const cleanValue = (valueStr || "0")
+            .replace(/\./g, '')
+            .replace(',', '.');
+            
           newEntries.push({
             schoolId: school.id,
             category: category || "Outros",
-            value: parseFloat(valueStr?.replace(',', '.') || "0")
+            value: parseFloat(cleanValue) || 0
           });
         }
       }
 
       setExpenses(prev => [...prev, ...newEntries]);
       setIsImporting(false);
-      toast({
-        title: "Importação concluída",
-        description: `${newEntries.length} lançamentos de despesas foram processados.`,
-      });
+      
+      if (newEntries.length > 0) {
+        toast({
+          title: "Importação concluída",
+          description: `${newEntries.length} lançamentos de despesas foram processados.`,
+        });
+      } else {
+        toast({
+          title: "Atenção",
+          description: "Nenhum dado válido encontrado no arquivo. Verifique se os códigos INEP correspondem às escolas cadastradas.",
+          variant: "destructive"
+        });
+      }
+
+      // Resetar input
+      if (fileInputRef.current) fileInputRef.current.value = "";
     };
 
     reader.readAsText(file);
@@ -96,6 +152,8 @@ export default function DespesasPage() {
   const totalNetworkExpenses = useMemo(() => {
     return Object.values(schoolExpensesSum).reduce((acc, val) => acc + val, 0);
   }, [schoolExpensesSum]);
+
+  const selectedSchoolData = MOCK_SCHOOLS.find(s => s.id === selectedSchool);
 
   return (
     <div className="space-y-6">
@@ -116,8 +174,8 @@ export default function DespesasPage() {
             {isImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             Importar CSV
           </Button>
-          <Button variant="outline" className="gap-2">
-            <Download className="h-4 w-4" /> Modelo de Planilha
+          <Button variant="outline" className="gap-2" onClick={handleDownloadTemplate}>
+            <FileSpreadsheet className="h-4 w-4" /> Modelo de Planilha
           </Button>
         </div>
       </div>
@@ -154,12 +212,12 @@ export default function DespesasPage() {
                 <div className="pt-4 space-y-3 border-t">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Total Matrículas</span>
-                    <span className="font-medium">{MOCK_SCHOOLS.find(s => s.id === selectedSchool)?.total_matriculas}</span>
+                    <span className="font-medium">{selectedSchoolData?.total_matriculas}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">% ETI</span>
                     <Badge variant="secondary" className="font-bold">
-                      {MOCK_SCHOOLS.find(s => s.id === selectedSchool)?.percentual_eti}%
+                      {selectedSchoolData?.percentual_eti}%
                     </Badge>
                   </div>
                   <div className="pt-2">
@@ -192,31 +250,40 @@ export default function DespesasPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {EXPENSE_CATEGORIES.map((cat, idx) => (
-                      <TableRow key={idx} className="hover:bg-muted/20">
-                        <TableCell className="font-medium">{cat}</TableCell>
-                        <TableCell>
-                          <Input className="text-right font-mono" placeholder="0,00" />
-                        </TableCell>
-                        <TableCell>
-                          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {EXPENSE_CATEGORIES.map((cat, idx) => {
+                      const existingValue = expenses.find(e => e.schoolId === selectedSchool && e.category === cat)?.value || 0;
+                      return (
+                        <TableRow key={idx} className="hover:bg-muted/20">
+                          <TableCell className="font-medium">{cat}</TableCell>
+                          <TableCell>
+                            <Input 
+                              className="text-right font-mono" 
+                              placeholder="0,00" 
+                              defaultValue={existingValue > 0 ? existingValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : ""}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                   <TableFooter>
                     <TableRow className="bg-primary/5 font-bold">
                       <TableCell>TOTAL DA UNIDADE</TableCell>
-                      <TableCell className="text-right text-lg text-primary">R$ 0,00</TableCell>
+                      <TableCell className="text-right text-lg text-primary">
+                        R$ {(schoolExpensesSum[selectedSchool] || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </TableCell>
                       <TableCell></TableCell>
                     </TableRow>
                   </TableFooter>
                 </Table>
                 
                 <div className="flex justify-end gap-2">
-                  <Button variant="outline">Limpar Lançamentos</Button>
+                  <Button variant="outline" onClick={() => setExpenses(prev => prev.filter(e => e.schoolId !== selectedSchool))}>Limpar Lançamentos</Button>
                   <Button onClick={handleSave} className="gap-2 shadow-lg shadow-primary/20">
                     <Save className="h-4 w-4" /> Salvar Detalhamento
                   </Button>
@@ -243,22 +310,28 @@ export default function DespesasPage() {
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                     <PieChart className="h-4 w-4 text-accent" />
-                    Maior Centro de Custo
+                    Situação dos Dados
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">Pessoal Docente</div>
-                  <p className="text-xs text-muted-foreground mt-2">Representa ~65% das despesas</p>
+                  <div className="text-2xl font-bold">
+                    {Object.keys(schoolExpensesSum).length} / {MOCK_SCHOOLS.length}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">Unidades com despesas lançadas</p>
                 </CardContent>
               </Card>
 
               <Card className="border-none shadow-md">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">Custo Médio / Aluno</CardTitle>
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Custo Médio / Aluno (Rede)</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-accent">R$ 0,00</div>
-                  <p className="text-xs text-muted-foreground mt-2">Base: Matrículas Censo 2026</p>
+                  <div className="text-2xl font-bold text-accent">
+                    R$ {MOCK_SCHOOLS.reduce((acc, s) => acc + s.total_matriculas, 0) > 0 
+                      ? (totalNetworkExpenses / MOCK_SCHOOLS.reduce((acc, s) => acc + s.total_matriculas, 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+                      : "0,00"}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">Base: Lançamentos efetivados</p>
                 </CardContent>
               </Card>
             </div>
