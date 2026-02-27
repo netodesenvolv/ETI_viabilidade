@@ -1,3 +1,4 @@
+
 "use client"
 
 import * as React from "react"
@@ -29,6 +30,7 @@ import {
 } from "@/components/ui/sidebar"
 import { useAuth, useFirestore, useUser, useDoc } from "@/firebase"
 import { doc } from "firebase/firestore"
+import { Skeleton } from "@/components/ui/skeleton"
 
 const menuItems = [
   { title: "Painel Executivo", icon: LayoutDashboard, href: "/dashboard" },
@@ -46,9 +48,14 @@ export function DashboardSidebar() {
   const auth = useAuth()
   const db = useFirestore()
   const { user } = useUser(auth)
+  const [mounted, setMounted] = React.useState(false)
+
+  React.useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const userProfileRef = React.useMemo(() => (db && user ? doc(db, 'users', user.uid) : null), [db, user]);
-  const { data: profile } = useDoc(userProfileRef);
+  const { data: profile, loading } = useDoc(userProfileRef);
 
   return (
     <Sidebar collapsible="icon">
@@ -83,7 +90,15 @@ export function DashboardSidebar() {
       <SidebarFooter className="p-4">
         <div className="bg-white/10 rounded-lg p-3 group-data-[collapsible=icon]:hidden">
           <p className="text-xs text-white/60">Exercício 2026</p>
-          <p className="text-sm font-medium text-white truncate">{profile?.municipio || "Município não definido"}</p>
+          <div className="h-5 flex items-center">
+            {!mounted || loading ? (
+              <Skeleton className="h-3 w-24 bg-white/20" />
+            ) : (
+              <p className="text-sm font-medium text-white truncate">
+                {profile?.municipio || "Município não definido"}
+              </p>
+            )}
+          </div>
         </div>
       </SidebarFooter>
     </Sidebar>
