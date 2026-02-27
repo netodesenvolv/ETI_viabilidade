@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useMemo } from "react";
@@ -48,7 +49,6 @@ export default function DashboardPage() {
   const { analysis, stats } = useMemo(() => {
     if (!schools || schools.length === 0) return { analysis: [], stats: null };
 
-    // Filtro combinado (Localização e Dependência)
     const filteredSchools = schools.filter(s => {
       const matchesLocalizacao = filterLocalizacao === "todas" ? true : s.localizacao === filterLocalizacao;
       const matchesDependencia = filterDependencia === "todas" ? true : String(s.tp_dependencia) === filterDependencia;
@@ -192,7 +192,6 @@ export default function DashboardPage() {
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
-          {/* Filtro de Localização */}
           <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border shadow-sm">
             <Filter className="h-4 w-4 text-muted-foreground" />
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Entidade:</span>
@@ -208,7 +207,6 @@ export default function DashboardPage() {
             </Select>
           </div>
 
-          {/* Filtro de Dependência */}
           <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border shadow-sm">
             <Layers className="h-4 w-4 text-muted-foreground" />
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Rede:</span>

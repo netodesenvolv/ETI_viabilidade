@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useRef, useMemo } from "react";
@@ -82,8 +83,10 @@ export default function CensoAdminPage() {
       const row: Record<string, string> = {};
       headers.forEach((header, index) => { row[header] = values[index]; });
       if (!row.CO_ENTIDADE) continue;
+      
       const total_matriculas = parseInt(row.QT_MAT_BAS || "0", 10);
       const total_eti = parseInt(row.QT_MAT_INF_INT || "0", 10) + parseInt(row.QT_MAT_FUND_INT || "0", 10) + parseInt(row.QT_MAT_MED_INT || "0", 10);
+      
       schools.push({
         id: row.CO_ENTIDADE,
         codigo_inep: row.CO_ENTIDADE,
@@ -91,7 +94,7 @@ export default function CensoAdminPage() {
         municipio: row.NO_MUNICIPIO || "N/A",
         uf: row.SG_UF || "N/A",
         localizacao: row.TP_LOCALIZACAO === "2" ? "Rural" : "Urbana",
-        tp_dependencia: row.TP_DEPENDENCIA || "3", // Default para municipal se vazio
+        tp_dependencia: row.TP_DEPENDENCIA || "3",
         total_matriculas,
         total_eti,
         percentual_eti: total_matriculas > 0 ? Number(((total_eti / total_matriculas) * 100).toFixed(1)) : 0,
