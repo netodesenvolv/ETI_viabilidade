@@ -1,0 +1,73 @@
+
+{
+  "entities": {
+    "UserProfile": {
+      "title": "Perfil de Usuário",
+      "description": "Dados de acesso e permissões do colaborador.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["Admin", "Editor", "Leitor"] },
+        "municipio": { "type": "string", "description": "Nome do município de atuação" },
+        "municipioId": { "type": "string", "description": "Código IBGE ou ID único do município" }
+      },
+      "required": ["name", "email", "role", "municipioId"]
+    },
+    "School": {
+      "title": "Unidade Escolar",
+      "description": "Dados da escola importados do Censo.",
+      "type": "object",
+      "properties": {
+        "codigo_inep": { "type": "string" },
+        "nome": { "type": "string" },
+        "total_matriculas": { "type": "number" },
+        "total_eti": { "type": "number" },
+        "percentual_eti": { "type": "number" },
+        "localizacao": { "type": "string", "enum": ["urbana", "rural"] }
+      }
+    },
+    "Expense": {
+      "title": "Despesa Escolar",
+      "description": "Lançamento de custos de uma unidade.",
+      "type": "object",
+      "properties": {
+        "schoolId": { "type": "string" },
+        "category": { "type": "string" },
+        "value": { "type": "number" },
+        "year": { "type": "number" }
+      }
+    },
+    "FundingParameters": {
+      "title": "Parâmetros de Financiamento",
+      "description": "Configurações de VAAf e PNAE do município.",
+      "type": "object",
+      "properties": {
+        "vaaf_base": { "type": "number" },
+        "fatores": { "type": "object" },
+        "pnae": { "type": "object" }
+      }
+    }
+  },
+  "auth": {
+    "providers": ["password"]
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/backend/entities/UserProfile" },
+      "description": "Perfis de usuários com segmentação municipal"
+    },
+    "/municipios/{municipioId}/schools/{schoolId}": {
+      "schema": { "$ref": "#/backend/entities/School" },
+      "description": "Escolas pertencentes a um município específico"
+    },
+    "/municipios/{municipioId}/expenses/{expenseId}": {
+      "schema": { "$ref": "#/backend/entities/Expense" },
+      "description": "Despesas segmentadas por município"
+    },
+    "/municipios/{municipioId}/config/parameters": {
+      "schema": { "$ref": "#/backend/entities/FundingParameters" },
+      "description": "Parâmetros de financiamento customizados por prefeitura"
+    }
+  }
+}
