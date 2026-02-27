@@ -1,7 +1,9 @@
 'use client';
 
+// Este objeto será preenchido automaticamente pelo Firebase Studio.
+// Não altere manualmente a estrutura das chaves.
 export const firebaseConfig = {
-  apiKey: "AIzaSy...", // Placeholder que será substituído automaticamente pelo Firebase Studio
+  apiKey: "AIzaSy...",
   authDomain: "edu-fin-insights.firebaseapp.com",
   projectId: "edu-fin-insights",
   storageBucket: "edu-fin-insights.appspot.com",

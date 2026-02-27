@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState } from "react"
@@ -12,6 +11,7 @@ import { useToast } from "@/hooks/use-toast"
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth"
 import { useAuth, useFirestore } from "@/firebase"
 import { doc, setDoc } from "firebase/firestore"
+import { firebaseConfig } from "@/firebase/config"
 import Link from "next/link"
 
 export default function LoginPage() {
@@ -37,6 +37,16 @@ export default function LoginPage() {
       })
       return
     }
+
+    if (firebaseConfig.apiKey === "AIzaSy...") {
+      toast({
+        title: "Configuração Pendente",
+        description: "As chaves do Firebase ainda não foram sincronizadas. Por favor, aguarde alguns instantes e atualize a página.",
+        variant: "destructive",
+      })
+      return
+    }
+
     setLoading(true)
 
     try {
@@ -62,24 +72,30 @@ export default function LoginPage() {
     if (!auth || !db) {
       toast({
         title: "Serviços indisponíveis",
-        description: "Firebase não inicializado corretamente. Verifique sua configuração.",
+        description: "Firebase não inicializado corretamente.",
         variant: "destructive",
       })
       return
     }
+
+    if (firebaseConfig.apiKey === "AIzaSy...") {
+      toast({
+        title: "Chave Inválida",
+        description: "A API Key ainda é um placeholder. O Studio precisa sincronizar o projeto.",
+        variant: "destructive",
+      })
+      return
+    }
+
     setSeeding(true)
     
     const adminEmail = "castroalvesneto@gmail.com"
     const adminPass = "paix2018+"
 
     try {
-      console.log("Tentando criar usuário no Auth...");
       const userCredential = await createUserWithEmailAndPassword(auth, adminEmail, adminPass)
       const user = userCredential.user
-      console.log("Usuário criado no Auth. UID:", user.uid);
 
-      console.log("Tentando criar perfil no Firestore...");
-      // Criar Perfil no Firestore com município padrão para teste
       await setDoc(doc(db, "users", user.uid), {
         name: "Administrador Geral",
         email: adminEmail,
@@ -89,7 +105,6 @@ export default function LoginPage() {
         status: "Ativo",
         createdAt: new Date().toISOString()
       })
-      console.log("Perfil criado no Firestore com sucesso.");
 
       toast({
         title: "Administrador Criado!",
@@ -110,7 +125,7 @@ export default function LoginPage() {
       } else {
         toast({
           title: "Erro na configuração",
-          description: error.message || "Ocorreu um erro desconhecido.",
+          description: error.message || "Verifique se o Auth está ativado no console.",
           variant: "destructive",
         })
       }
@@ -209,7 +224,7 @@ export default function LoginPage() {
         </form>
       </Card>
       <p className="mt-8 text-xs text-muted-foreground max-w-xs text-center">
-        O sistema multi-município requer que seu usuário esteja vinculado a um Código IBGE válido para processar os dados do Censo e Despesas.
+        Certifique-se de habilitar o provedor de E-mail/Senha no Console do Firebase antes de criar o admin.
       </p>
     </div>
   )
