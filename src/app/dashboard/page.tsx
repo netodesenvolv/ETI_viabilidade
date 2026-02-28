@@ -3,7 +3,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { KPICard } from "@/components/dashboard/kpi-card";
-import { Users, GraduationCap, DollarSign, AlertCircle, TrendingUp, Sparkles, FileText, Download, Loader2, Filter, Layers, Copy, Check, FileDown, ShieldCheck, Scale, Info } from "lucide-react";
+import { Users, GraduationCap, DollarSign, AlertCircle, TrendingUp, Sparkles, FileText, Download, Loader2, Filter, Layers, Copy, Check, FileDown, ShieldCheck, Scale, Info, Building2 } from "lucide-react";
 import { DEFAULT_PARAMETERS } from "@/lib/constants";
 import { calcularVAAF, calcularVAAT, calcularPNAE, calcularMDE, calcularOutros } from "@/lib/calculations";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -80,7 +80,6 @@ export default function DashboardPage() {
       const schoolExpenses = (allExpenses || []).filter((e: any) => e.schoolId === school.id);
       const despesaReal = schoolExpenses.reduce((acc, e: any) => acc + (e.value || 0), 0);
       
-      // Ajuste: Se não houver despesa real, não projetamos 95%. Usamos a despesa real (que pode ser 0).
       const despesaTotal = despesaReal;
       
       const saldo = receitaTotal - despesaTotal;
@@ -89,7 +88,7 @@ export default function DashboardPage() {
       const receitaAluno = (school.total_matriculas || 0) > 0 ? receitaTotal / school.total_matriculas : 0;
 
       let status: 'superavit' | 'neutro' | 'deficit' = 'superavit';
-      if (despesaTotal === 0) status = 'neutro'; // Sem dados de custo
+      if (despesaTotal === 0) status = 'neutro';
       else if (cobertura <= 0.98) status = 'deficit';
       else if (cobertura < 1.02) status = 'neutro';
 
@@ -128,7 +127,9 @@ export default function DashboardPage() {
 
     const percETI = totalMatriculasRede > 0 ? (totalETIRede / totalMatriculasRede) * 100 : 0;
     
-    // Alerta se não houver despesas lançadas
+    const schoolsWithEtiCount = schoolAnalyses.filter(s => (s.total_eti || 0) > 0).length;
+    const percSchoolsWithEti = schoolAnalyses.length > 0 ? (schoolsWithEtiCount / schoolAnalyses.length) * 100 : 0;
+
     const hasExpenses = (allExpenses || []).length > 0;
 
     const technicalInsights = [
@@ -165,7 +166,10 @@ export default function DashboardPage() {
         deficitCount: currentDeficitCount,
         avgCusto: currentAvgCusto,
         receitaAlunoMedio: currentTotalReceita / (schoolAnalyses.reduce((acc, s) => acc + (s.total_matriculas || 0), 0) || 1),
-        hasExpenses
+        hasExpenses,
+        schoolsWithEtiCount,
+        percSchoolsWithEti,
+        totalSchools: schoolAnalyses.length
       },
       networkTotals: municipalRevenue,
       nativeInsights: technicalInsights
@@ -315,9 +319,10 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <KPICard title="Matrículas Municipais" value={mounted ? stats?.totalMatriculasRede.toLocaleString('pt-BR') : "0"} icon={Users} subtitle="Rede direta" />
         <KPICard title="Alunos em ETI" value={`${stats?.percentualETI.toFixed(1)}%`} icon={GraduationCap} subtitle={`${stats?.totalETIRede} alunos integrais`} />
+        <KPICard title="Cobertura ETI (Escolas)" value={`${stats?.percSchoolsWithEti.toFixed(1)}%`} icon={Building2} subtitle={`${stats?.schoolsWithEtiCount} de ${stats?.totalSchools} unidades`} />
         <KPICard title="Saldo Estimado" value={`R$ ${mounted ? (stats?.totalSaldo! / 1000).toFixed(1) : "0"}k`} icon={DollarSign} subtitle={stats?.hasExpenses ? (stats?.totalSaldo! >= 0 ? "Superávit" : "Déficit") : "Aguardando Despesas"} className={stats?.hasExpenses ? (stats?.totalSaldo! >= 0 ? "bg-green-50/50 border-green-200" : "bg-red-50/50 border-red-200") : "bg-muted/30 border-dashed"} />
         <KPICard title="Unidades em Risco" value={stats?.deficitCount || 0} icon={AlertCircle} subtitle="Cenário de déficit" className={stats?.deficitCount! > 0 ? "bg-orange-50/50 border-orange-200" : ""} />
       </div>
