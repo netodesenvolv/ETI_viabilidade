@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useMemo, useEffect } from "react";
@@ -77,12 +76,8 @@ export default function DashboardPage() {
       const outros = calcularOutros(school, parametros, totalMatriculasMunicipal);
       
       const receitaTotal = vaaf + vaat + pnae + mde + outros;
-      
-      // Busca despesas reais do banco de dados para esta escola
       const schoolExpenses = (allExpenses || []).filter((e: any) => e.schoolId === school.id);
       const despesaReal = schoolExpenses.reduce((acc, e: any) => acc + (e.value || 0), 0);
-      
-      // Se não houver despesa lançada, usa uma estimativa técnica (95% da receita)
       const despesaTotal = despesaReal > 0 ? despesaReal : (receitaTotal * 0.95);
       
       const saldo = receitaTotal - despesaTotal;
@@ -96,26 +91,15 @@ export default function DashboardPage() {
 
       return {
         ...school,
-        vaaf,
-        vaat,
-        pnae,
-        mde,
-        outros,
-        receitaTotal,
-        despesaTotal,
-        saldo,
-        cobertura,
-        custoAluno,
-        receitaAluno,
-        status
+        vaaf, vaat, pnae, mde, outros,
+        receitaTotal, despesaTotal, saldo, cobertura,
+        custoAluno, receitaAluno, status
       };
     });
 
-    // Totais consolidados da REDE MUNICIPAL (independente de filtros de exibição)
     const totalMatriculasRede = municipalSchools.reduce((acc, s: any) => acc + (s.total_matriculas || 0), 0);
     const totalETIRede = municipalSchools.reduce((acc, s: any) => acc + (s.total_eti || 0), 0);
     
-    // Cálculo de totais financeiros da rede municipal para a IA
     const municipalRevenue = municipalSchools.reduce((acc, s: any) => {
       const m = s.matriculas || {};
       const vaaf = calcularVAAF(m, parametros);
@@ -155,7 +139,7 @@ export default function DashboardPage() {
 
   const handleGenerateReport = async () => {
     if (!stats || !networkTotals) {
-      toast({ title: "Dados incompletos", description: "Aguarde o carregamento dos dados da rede.", variant: "destructive" });
+      toast({ title: "Dados incompletos", description: "Aguarde o carregamento dos dados.", variant: "destructive" });
       return;
     }
     
@@ -189,16 +173,17 @@ export default function DashboardPage() {
         escolasEmAtencao: analysis
           .filter(s => s.status === 'deficit')
           .slice(0, 5)
-          .map(s => `${s.nome}: Cobertura de ${s.cobertura.toFixed(2)}x, Custo/Aluno R$ ${Math.round(s.custoAluno)}`),
+          .map(s => `${s.nome}: Cobertura ${s.cobertura.toFixed(2)}x`),
       };
       
-      const result = await generateExecutiveFinancialReport(input as any);
+      const result = await generateExecutiveFinancialReport(input);
       setReport(result);
-      toast({ title: "Diagnóstico Gerado", description: "A IA concluiu a análise técnica da rede municipal." });
-    } catch (error) {
+      toast({ title: "Diagnóstico Gerado", description: "A IA concluiu a análise técnica." });
+    } catch (error: any) {
+      console.error(error);
       toast({
         title: "Erro na IA",
-        description: "Não foi possível conectar ao serviço de narrativa técnica.",
+        description: `Falha na narrativa técnica: ${error.message || 'Verifique sua conexão.'}`,
         variant: "destructive"
       });
     } finally {
@@ -211,17 +196,14 @@ export default function DashboardPage() {
     navigator.clipboard.writeText(report);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-    toast({ title: "Copiado", description: "Relatório copiado para a área de transferência." });
+    toast({ title: "Copiado", description: "Copiado para a área de transferência." });
   };
-
-  const formatVal = (v: number) => mounted ? v.toLocaleString('pt-BR') : "0";
-  const formatCur = (v: number) => mounted ? v.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) : "0";
 
   if (profileLoading || schoolsLoading) {
     return (
       <div className="h-[60vh] flex flex-col items-center justify-center gap-4">
         <Loader2 className="h-10 w-10 animate-spin text-primary opacity-20" />
-        <p className="text-muted-foreground animate-pulse">Carregando dados da rede municipal...</p>
+        <p className="text-muted-foreground animate-pulse">Carregando dados municipais...</p>
       </div>
     );
   }
@@ -231,16 +213,15 @@ export default function DashboardPage() {
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-headline font-bold text-primary">Diagnóstico: {profile?.municipio}</h2>
-          <p className="text-muted-foreground">Visão geral do exercício fiscal 2026 (Filtro Central: Municipal)</p>
+          <p className="text-muted-foreground">Visão geral do exercício fiscal 2026 (Rede Municipal)</p>
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border shadow-sm">
+          <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border shadow-sm text-xs">
             <Filter className="h-4 w-4 text-muted-foreground" />
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Local:</span>
             <Select value={filterLocalizacao} onValueChange={setFilterLocalizacao}>
-              <SelectTrigger className="h-8 w-[120px] border-none shadow-none focus:ring-0 text-xs font-bold">
-                <SelectValue placeholder="Localização" />
+              <SelectTrigger className="h-8 w-[100px] border-none shadow-none focus:ring-0 font-bold">
+                <SelectValue placeholder="Local" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="todas">Todas</SelectItem>
@@ -250,15 +231,14 @@ export default function DashboardPage() {
             </Select>
           </div>
 
-          <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border shadow-sm">
+          <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border shadow-sm text-xs">
             <Layers className="h-4 w-4 text-muted-foreground" />
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Rede:</span>
             <Select value={filterDependencia} onValueChange={setFilterDependencia}>
-              <SelectTrigger className="h-8 w-[140px] border-none shadow-none focus:ring-0 text-xs font-bold">
-                <SelectValue placeholder="Dependência" />
+              <SelectTrigger className="h-8 w-[130px] border-none shadow-none focus:ring-0 font-bold">
+                <SelectValue placeholder="Rede" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="3">Municipal (Alvo)</SelectItem>
+                <SelectItem value="3">Municipal</SelectItem>
                 <SelectItem value="1">Federal</SelectItem>
                 <SelectItem value="2">Estadual</SelectItem>
                 <SelectItem value="4">Privada</SelectItem>
@@ -269,47 +249,23 @@ export default function DashboardPage() {
 
           <Button onClick={handleGenerateReport} disabled={isGenerating || analysis.length === 0} size="sm" className="gap-2 bg-accent hover:bg-accent/90 shadow-md">
             {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            {isGenerating ? "Analisando..." : "Gerar Narrativa IA"}
+            {isGenerating ? "Processando..." : "Gerar Narrativa IA"}
           </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KPICard 
-          title="Matrículas Municipais" 
-          value={formatVal(stats?.totalMatriculasRede || 0)} 
-          icon={Users}
-          subtitle="Rede direta da prefeitura"
-        />
-        <KPICard 
-          title="Alunos em ETI" 
-          value={`${stats?.percentualETI.toFixed(1)}%`} 
-          icon={GraduationCap}
-          subtitle={`${stats?.totalETIRede} alunos municipais integrais`}
-        />
-        <KPICard 
-          title="Saldo Estimado" 
-          value={`R$ ${((stats?.totalSaldo || 0) / 1000).toFixed(1)}k`} 
-          icon={DollarSign}
-          subtitle={stats?.totalSaldo! >= 0 ? "Superávit Projetado" : "Déficit Projetado"}
-          className={stats?.totalSaldo! >= 0 ? "bg-green-50/50 border-green-200" : "bg-red-50/50 border-red-200"}
-        />
-        <KPICard 
-          title="Alerta de Déficit" 
-          value={stats?.deficitCount || 0} 
-          icon={AlertCircle}
-          subtitle={`Unidades no cenário crítico`}
-          className={stats?.deficitCount! > 0 ? "bg-orange-50/50 border-orange-200" : ""}
-        />
+        <KPICard title="Matrículas Municipais" value={mounted ? stats?.totalMatriculasRede.toLocaleString('pt-BR') : "0"} icon={Users} subtitle="Rede direta" />
+        <KPICard title="Alunos em ETI" value={`${stats?.percentualETI.toFixed(1)}%`} icon={GraduationCap} subtitle={`${stats?.totalETIRede} alunos integrais`} />
+        <KPICard title="Saldo Estimado" value={`R$ ${mounted ? (stats?.totalSaldo! / 1000).toFixed(1) : "0"}k`} icon={DollarSign} subtitle={stats?.totalSaldo! >= 0 ? "Superávit" : "Déficit"} className={stats?.totalSaldo! >= 0 ? "bg-green-50/50 border-green-200" : "bg-red-50/50 border-red-200"} />
+        <KPICard title="Unidades em Risco" value={stats?.deficitCount || 0} icon={AlertCircle} subtitle="Cenário de déficit" className={stats?.deficitCount! > 0 ? "bg-orange-50/50 border-orange-200" : ""} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2 shadow-md">
           <CardHeader>
-            <CardTitle className="font-headline text-lg">Ranking de Eficiência Escolar</CardTitle>
-            <CardDescription>
-              Comparativo Receita vs Custo (Base FUNDEB 2026 + Despesas Lançadas)
-            </CardDescription>
+            <CardTitle className="font-headline text-lg">Eficiência Financeira por Unidade</CardTitle>
+            <CardDescription>Comparativo Receita vs Custo Projetado 2026</CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
@@ -325,18 +281,16 @@ export default function DashboardPage() {
               <TableBody>
                 {analysis.length > 0 ? (
                   analysis.map((school) => (
-                    <TableRow key={school.id} className="hover:bg-muted/30">
+                    <TableRow key={school.id} className="hover:bg-muted/30 text-xs">
                       <TableCell>
                         <div className="font-medium text-sm">{school.nome}</div>
-                        <div className="text-[10px] text-muted-foreground uppercase flex gap-2">
-                          <span className="font-bold text-primary">{String(school.localizacao).toUpperCase()}</span>
-                          <span>•</span>
-                          <span>{DEPENDENCIA_LABELS[String(school.tp_dependencia)] || "N/A"}</span>
+                        <div className="text-[10px] text-muted-foreground uppercase">
+                          {String(school.localizacao).toUpperCase()} • {DEPENDENCIA_LABELS[String(school.tp_dependencia)]}
                         </div>
                       </TableCell>
-                      <TableCell className="text-right text-xs">R$ {formatCur(school.receitaAluno)}</TableCell>
-                      <TableCell className="text-right text-xs">R$ {formatCur(school.custoAluno)}</TableCell>
-                      <TableCell className="text-right text-xs font-bold text-accent">{school.percentual_eti || 0}%</TableCell>
+                      <TableCell className="text-right font-mono">R$ {mounted ? Math.round(school.receitaAluno).toLocaleString('pt-BR') : "0"}</TableCell>
+                      <TableCell className="text-right font-mono">R$ {mounted ? Math.round(school.custoAluno).toLocaleString('pt-BR') : "0"}</TableCell>
+                      <TableCell className="text-right font-bold text-accent">{school.percentual_eti || 0}%</TableCell>
                       <TableCell>
                         <Badge variant={school.status === 'superavit' ? 'default' : school.status === 'deficit' ? 'destructive' : 'secondary'} className={school.status === 'superavit' ? 'bg-green-600' : ''}>
                           {school.status.toUpperCase()}
@@ -345,11 +299,7 @@ export default function DashboardPage() {
                     </TableRow>
                   ))
                 ) : (
-                  <TableRow>
-                    <TableCell colSpan={5} className="h-32 text-center text-muted-foreground italic bg-muted/10">
-                      Nenhuma escola encontrada com os filtros atuais.
-                    </TableCell>
-                  </TableRow>
+                  <TableRow><TableCell colSpan={5} className="h-32 text-center text-muted-foreground italic">Nenhum dado encontrado.</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>
@@ -360,50 +310,31 @@ export default function DashboardPage() {
           <CardHeader className="bg-accent/5 border-b">
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-2 font-headline text-lg text-accent">
-                <Sparkles className="h-5 w-5" />
-                Narrativa IA
+                <Sparkles className="h-5 w-5" /> Narrativa IA
               </CardTitle>
               {report && (
-                <div className="flex gap-1">
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-accent" onClick={handleCopy}>
-                    {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                  </Button>
-                </div>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-accent" onClick={handleCopy}>
+                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                </Button>
               )}
             </div>
           </CardHeader>
           <CardContent className="flex-1 pt-6">
             {report ? (
-              <ScrollArea className="h-[450px] pr-4">
-                <div className="text-xs space-y-4 whitespace-pre-wrap font-body leading-relaxed text-slate-700 bg-slate-50 p-4 rounded-xl border border-slate-100 shadow-inner">
+              <ScrollArea className="h-[450px]">
+                <div className="text-xs space-y-4 whitespace-pre-wrap font-body leading-relaxed text-slate-700 bg-slate-50 p-4 rounded-xl border">
                   {report}
                 </div>
               </ScrollArea>
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-6 border-2 border-dashed rounded-2xl bg-muted/5">
-                <div className="p-4 bg-accent/10 rounded-full animate-pulse">
-                  <FileText className="h-12 w-12 text-accent/40" />
-                </div>
+                <FileText className="h-12 w-12 text-accent/40" />
                 <div className="space-y-2">
-                  <h4 className="font-bold text-slate-800">Pronto para Diagnóstico</h4>
-                  <p className="text-muted-foreground text-xs leading-relaxed max-w-[200px] mx-auto">
-                    {isGenerating 
-                      ? "A IA está processando os microdados fiscais de 2026..." 
-                      : "Gere uma análise textual completa sobre a sustentabilidade da rede municipal."}
+                  <h4 className="font-bold text-slate-800">Aguardando Diagnóstico</h4>
+                  <p className="text-muted-foreground text-[11px] max-w-[200px] mx-auto">
+                    {isGenerating ? "Processando microdados fiscais..." : "Clique no botão acima para gerar a análise técnica da rede."}
                   </p>
                 </div>
-                {!isGenerating && (
-                  <Button 
-                    onClick={handleGenerateReport} 
-                    size="sm" 
-                    disabled={analysis.length === 0} 
-                    variant="outline" 
-                    className="border-accent text-accent hover:bg-accent/5 gap-2"
-                  >
-                    <Sparkles className="h-4 w-4" />
-                    Gerar agora
-                  </Button>
-                )}
               </div>
             )}
           </CardContent>

@@ -47,7 +47,7 @@ export type GenerateExecutiveFinancialReportOutput = z.infer<typeof GenerateExec
 
 const financialReportPrompt = ai.definePrompt({
   name: 'financialReportPrompt',
-  model: 'googleai/gemini-1.5-pro',
+  model: 'googleai/gemini-2.5-flash',
   input: { schema: GenerateExecutiveFinancialReportInputSchema },
   output: { schema: GenerateExecutiveFinancialReportOutputSchema },
   prompt: `Você é um especialista em financiamento da educação básica municipal brasileira.
