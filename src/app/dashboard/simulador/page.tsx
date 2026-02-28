@@ -21,9 +21,10 @@ import {
 } from "recharts";
 import { DEFAULT_PARAMETERS } from "@/lib/constants";
 import { calcularVAAF, calcularVAAT, calcularPNAE } from "@/lib/calculations";
-import { GraduationCap, TrendingUp, DollarSign, Users, AlertTriangle, CheckCircle2, Calculator, Info, Loader2, RefreshCcw } from "lucide-react";
+import { GraduationCap, TrendingUp, DollarSign, Users, AlertTriangle, CheckCircle2, Calculator, Info, Loader2, RefreshCcw, Layers, Scale } from "lucide-react";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useAuth, useFirestore, useUser, useDoc, useCollection } from "@/firebase";
 import { doc, collection } from "firebase/firestore";
 
@@ -46,6 +47,7 @@ export default function SimuladorETIPage() {
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>("");
   const [novasMatriculasETI, setNovasMatriculasETI] = useState(20);
   const [custoExtraEstimado, setCustoExtraEstimado] = useState(4500); 
+  const [logicaExpansao, setLogicaExpansao] = useState<"simples" | "capacidade">("simples");
 
   // FILTRO CENTRAL: Apenas escolas municipais para simulação
   const municipalSchools = useMemo(() => {
@@ -77,11 +79,13 @@ export default function SimuladorETIPage() {
     const receitaAtual = vaafAtual + pnaeAtual;
 
     // LÓGICA DE CONVERSÃO:
-    // Adiciona ao integral e subtrai do parcial (Anos Iniciais EF)
+    // Se logica === 'capacidade', cada 1 integral remove 2 parciais (ocupa os 2 turnos)
+    const fatorReducao = logicaExpansao === 'capacidade' ? 2 : 1;
+    
     const novasMatriculas = {
       ...schoolMatriculas,
       ef_ai_integral: (schoolMatriculas.ef_ai_integral || 0) + novasMatriculasETI,
-      ef_ai_parcial: Math.max(0, (schoolMatriculas.ef_ai_parcial || 0) - novasMatriculasETI)
+      ef_ai_parcial: Math.max(0, (schoolMatriculas.ef_ai_parcial || 0) - (novasMatriculasETI * fatorReducao))
     };
 
     const vaafSimulado = calcularVAAF(novasMatriculas, parametros);
@@ -94,6 +98,10 @@ export default function SimuladorETIPage() {
     const saldoSimulacao = incrementoReceita - despesaExtra;
     const viabilidade = despesaExtra > 0 ? (incrementoReceita / despesaExtra) * 100 : 100;
 
+    const matriculasAntes = totalMatriculas(schoolMatriculas);
+    const matriculasDepois = totalMatriculas(novasMatriculas);
+    const reducaoVagas = matriculasAntes - matriculasDepois;
+
     return {
       receitaAtual,
       receitaSimulada,
@@ -102,10 +110,11 @@ export default function SimuladorETIPage() {
       saldoSimulacao,
       viabilidade,
       novasMatriculasETI,
+      reducaoVagas,
       percentualETIAnterior: selectedSchool.percentual_eti || 0,
-      percentualETINovo: totalMatriculas(novasMatriculas) > 0 ? (totalETI(novasMatriculas) / totalMatriculas(novasMatriculas)) * 100 : 0
+      percentualETINovo: matriculasDepois > 0 ? (totalETI(novasMatriculas) / matriculasDepois) * 100 : 0
     };
-  }, [selectedSchool, novasMatriculasETI, custoExtraEstimado, parametros]);
+  }, [selectedSchool, novasMatriculasETI, custoExtraEstimado, parametros, logicaExpansao]);
 
   function totalMatriculas(m: any) {
     return Object.values(m).reduce((a: any, b: any) => a + (b || 0), 0);
@@ -150,10 +159,10 @@ export default function SimuladorETIPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-headline font-bold text-primary">Simulador de Expansão: {profile?.municipio}</h2>
-          <p className="text-muted-foreground">Projeções de conversão para Tempo Integral (Exercício 2026)</p>
+          <p className="text-muted-foreground">Projeções de impacto fiscal e físico para 2026</p>
         </div>
         <Badge variant="outline" className="h-fit py-1 px-3 border-accent/30 text-accent bg-accent/5 gap-2">
-          <RefreshCcw className="h-3 w-3" /> Lógica: Conversão de Vagas
+          <RefreshCcw className="h-3 w-3" /> Simulação de Rede
         </Badge>
       </div>
 
@@ -164,7 +173,7 @@ export default function SimuladorETIPage() {
               <Calculator className="h-5 w-5 text-primary" />
               Parâmetros de Simulação
             </CardTitle>
-            <CardDescription>Ajuste as variáveis para calcular a viabilidade</CardDescription>
+            <CardDescription>Configure as variáveis e o modelo de ocupação</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-2">
@@ -181,9 +190,37 @@ export default function SimuladorETIPage() {
               </Select>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-4 pt-4 border-t">
+              <Label className="text-xs font-bold uppercase text-muted-foreground">Modelo de Ocupação Física</Label>
+              <RadioGroup 
+                value={logicaExpansao} 
+                onValueChange={(v: any) => setLogicaExpansao(v)}
+                className="grid gap-4"
+              >
+                <div className="flex items-start space-x-3 p-3 border rounded-xl hover:bg-muted/50 cursor-pointer transition-colors">
+                  <RadioGroupItem value="simples" id="simples" className="mt-1" />
+                  <Label htmlFor="simples" className="cursor-pointer space-y-1">
+                    <div className="font-bold flex items-center gap-2">Conversão Direta (1:1)</div>
+                    <p className="text-[10px] text-muted-foreground leading-tight">
+                      Cada 1 novo aluno integral substitui 1 aluno parcial. Assume que a escola possui salas extras ou capacidade ociosa nos turnos.
+                    </p>
+                  </Label>
+                </div>
+                <div className="flex items-start space-x-3 p-3 border rounded-xl hover:bg-muted/50 cursor-pointer transition-colors">
+                  <RadioGroupItem value="capacidade" id="capacidade" className="mt-1" />
+                  <Label htmlFor="capacidade" className="cursor-pointer space-y-1">
+                    <div className="font-bold flex items-center gap-2">Conversão por Turno (1:2)</div>
+                    <p className="text-[10px] text-muted-foreground leading-tight">
+                      Cada 1 novo aluno integral substitui 2 alunos parciais (Manhã e Tarde). Reflete a realidade de ocupação total do espaço físico.
+                    </p>
+                  </Label>
+                </div>
+              </RadioGroup>
+            </div>
+
+            <div className="space-y-4 pt-4 border-t">
               <div className="flex justify-between items-center">
-                <Label>Vagas para Converter em ETI</Label>
+                <Label>Novas Matrículas ETI</Label>
                 <Input 
                   type="number"
                   className="w-20 h-8 text-right font-bold"
@@ -197,9 +234,11 @@ export default function SimuladorETIPage() {
                 max={Math.max(100, novasMatriculasETI + 50)} 
                 step={1} 
               />
-              <p className="text-[10px] text-muted-foreground leading-relaxed italic">
-                * As vagas serão subtraídas do Ensino Fundamental Parcial e adicionadas ao Integral.
-              </p>
+              {logicaExpansao === 'capacidade' && (
+                <p className="text-[10px] text-orange-600 font-medium flex items-center gap-1">
+                  <Scale className="h-3 w-3" /> Impacto: Redução de {novasMatriculasETI * 2} vagas parciais.
+                </p>
+              )}
             </div>
 
             <div className="space-y-4 pt-4 border-t">
@@ -222,13 +261,12 @@ export default function SimuladorETIPage() {
                 max={15000} 
                 step={50} 
               />
-              <p className="text-[10px] text-muted-foreground leading-relaxed">Considerar: Folha adicional, merenda extra e manutenção.</p>
             </div>
 
             <div className="p-4 bg-primary/5 rounded-xl border border-primary/10 space-y-2">
-              <p className="text-[10px] text-primary font-bold uppercase">Impacto FUNDEB Municipal</p>
+              <p className="text-[10px] text-primary font-bold uppercase">Impacto FUNDEB 2026</p>
               <p className="text-[11px] leading-relaxed text-muted-foreground">
-                Cada aluno convertido de parcial (fator 1.0) para integral (fator 1.30) gera um incremento real de receita VAAf para o tesouro de {profile?.municipio}.
+                O cálculo utiliza o VAAf Base de R$ {parametros.vaaf_base.toLocaleString('pt-BR')} e o fator integral de 1.30.
               </p>
             </div>
           </CardContent>
@@ -239,9 +277,9 @@ export default function SimuladorETIPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Card className="border-none shadow-sm bg-white">
                 <CardContent className="pt-6">
-                  <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Incremento Receita (VAAf+PNAE)</div>
+                  <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Incremento Receita</div>
                   <div className="text-2xl font-bold text-green-600">+ R$ {simulacao.incrementoReceita.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</div>
-                  <p className="text-[10px] text-muted-foreground mt-1">Ganhos em repasses anuais</p>
+                  <p className="text-[10px] text-muted-foreground mt-1">Ganhos em repasses</p>
                 </CardContent>
               </Card>
 
@@ -255,19 +293,22 @@ export default function SimuladorETIPage() {
 
               <Card className={`border-none shadow-sm ${simulacao.saldoSimulacao >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
                 <CardContent className="pt-6">
-                  <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Saldo Líquido da Conversão</div>
+                  <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Saldo Líquido</div>
                   <div className={`text-2xl font-bold ${simulacao.saldoSimulacao >= 0 ? 'text-green-700' : 'text-red-700'}`}>
                     R$ {simulacao.saldoSimulacao.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
                   </div>
-                  <p className="text-[10px] text-muted-foreground mt-1">{simulacao.saldoSimulacao >= 0 ? 'Margem para investimentos' : 'Necessita aporte municipal'}</p>
+                  <p className="text-[10px] text-muted-foreground mt-1">{simulacao.saldoSimulacao >= 0 ? 'Expansão sustentável' : 'Necessita aporte próprio'}</p>
                 </CardContent>
               </Card>
             </div>
 
             <Card className="border-none shadow-md">
               <CardHeader>
-                <CardTitle className="text-lg">Projeção Financeira Municipal</CardTitle>
-                <CardDescription>Impacto da conversão de {simulacao.novasMatriculasETI} vagas na unidade: {selectedSchool?.nome}</CardDescription>
+                <CardTitle className="text-lg">Projeção de Fluxo de Caixa</CardTitle>
+                <CardDescription>
+                  Modelo: {logicaExpansao === 'simples' ? 'Conversão 1:1' : 'Conversão 1:2 (Físico)'} | 
+                  Unidade: {selectedSchool?.nome}
+                </CardDescription>
               </CardHeader>
               <CardContent className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
@@ -292,14 +333,18 @@ export default function SimuladorETIPage() {
               <Card className="border-accent/20 bg-accent/5">
                 <CardContent className="pt-6">
                   <h4 className="font-headline font-bold text-accent mb-2 flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4" /> Viabilidade da Expansão
+                    <Scale className="h-4 w-4" /> Análise de Capacidade
                   </h4>
                   <p className="text-sm text-accent/80 leading-relaxed">
-                    A conversão gera uma cobertura de <span className="font-bold">{simulacao.viabilidade.toFixed(1)}%</span> sobre o custo extra. 
-                    {simulacao.viabilidade >= 100 
-                      ? " Os repasses federais e estaduais cobrem integralmente o investimento." 
-                      : " O município precisará aportar recursos próprios para manter a expansão."}
+                    {logicaExpansao === 'capacidade' ? (
+                      <>Para manter o padrão integral, a escola atenderá <b>{simulacao.reducaoVagas} alunos a menos</b> em relação ao cenário anterior. Isso exige reorganização do fluxo de matrículas da rede.</>
+                    ) : (
+                      <>Assume-se que a escola comporta novos alunos integrais sem reduzir a oferta total, ocupando vagas que estavam vazias ou turnos inativos.</>
+                    )}
                   </p>
+                  <div className="mt-3 flex items-center gap-2">
+                    <Badge variant="outline" className="bg-white">{simulacao.viabilidade.toFixed(1)}% de Cobertura</Badge>
+                  </div>
                 </CardContent>
               </Card>
 
