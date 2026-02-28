@@ -41,7 +41,9 @@ const GenerateExecutiveFinancialReportInputSchema = z.object({
 
 export type GenerateExecutiveFinancialReportInput = z.infer<typeof GenerateExecutiveFinancialReportInputSchema>;
 
-const GenerateExecutiveFinancialReportOutputSchema = z.string().describe('The executive narrative financial report.');
+const GenerateExecutiveFinancialReportOutputSchema = z.object({
+  report: z.string().describe('The detailed executive narrative financial report.'),
+});
 
 export type GenerateExecutiveFinancialReportOutput = z.infer<typeof GenerateExecutiveFinancialReportOutputSchema>;
 
@@ -50,6 +52,26 @@ const financialReportPrompt = ai.definePrompt({
   model: 'googleai/gemini-2.5-flash',
   input: { schema: GenerateExecutiveFinancialReportInputSchema },
   output: { schema: GenerateExecutiveFinancialReportOutputSchema },
+  config: {
+    safetySettings: [
+      {
+        category: 'HARM_CATEGORY_HATE_SPEECH',
+        threshold: 'BLOCK_NONE',
+      },
+      {
+        category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
+        threshold: 'BLOCK_NONE',
+      },
+      {
+        category: 'HARM_CATEGORY_HARASSMENT',
+        threshold: 'BLOCK_NONE',
+      },
+      {
+        category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
+        threshold: 'BLOCK_NONE',
+      },
+    ],
+  },
   prompt: `Você é um especialista em financiamento da educação básica municipal brasileira.
 Com base nos dados abaixo da rede municipal de {{{municipio}}}/{{{uf}}} para o exercício {{{exercicio}}},
 gere um relatório executivo de diagnóstico financeiro para a Escola em Tempo Integral:
@@ -75,7 +97,7 @@ ESCOLAS EM ATENÇÃO:
 - {{{this}}}
 {{/each}}
 
-Produza:
+Produza o relatório no campo "report" do JSON de saída contendo:
 1. Diagnóstico geral da rede (2 parágrafos)
 2. Principais riscos identificados (bullet points)
 3. Escolas que requerem atenção imediata (máximo 5, com justificativa)
@@ -94,8 +116,8 @@ const generateExecutiveFinancialReportFlow = ai.defineFlow(
   },
   async (input) => {
     const { output } = await financialReportPrompt(input);
-    if (!output) {
-      throw new Error('Failed to generate executive financial report.');
+    if (!output || !output.report) {
+      throw new Error('Falha ao gerar o diagnóstico da IA. Verifique os dados de entrada ou tente novamente.');
     }
     return output;
   }

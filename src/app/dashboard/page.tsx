@@ -177,7 +177,7 @@ export default function DashboardPage() {
       };
       
       const result = await generateExecutiveFinancialReport(input);
-      setReport(result);
+      setReport(result.report);
       toast({ title: "Diagnóstico Gerado", description: "A IA concluiu a análise técnica." });
     } catch (error: any) {
       console.error(error);
