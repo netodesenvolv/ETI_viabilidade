@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useRef, useMemo, useEffect } from "react";
@@ -7,14 +8,25 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Save, FileSpreadsheet, Plus, Trash2, Download, Upload, Loader2, Building2, Landmark, PieChart, FileText, AlertCircle } from "lucide-react";
+import { Save, FileSpreadsheet, Plus, Trash2, Download, Upload, Loader2, Building2, Landmark, PieChart, FileText, AlertCircle, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth, useFirestore, useUser, useDoc, useCollection } from "@/firebase";
-import { doc, setDoc, collection } from "firebase/firestore";
+import { doc, setDoc, collection, getDocs, deleteDoc } from "firebase/firestore";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const EXPENSE_CATEGORIES = [
   "Pessoal — Docentes",
@@ -40,6 +52,7 @@ export default function DespesasPage() {
   const [selectedSchool, setSelectedSchool] = useState<string>("");
   const [isImporting, setIsImporting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   // Firebase
   const auth = useAuth();
@@ -82,7 +95,7 @@ export default function DespesasPage() {
     if (expenses.length === 0) {
       toast({
         title: "Nenhum dado",
-        description: "Não há despesas para salvar no banco.",
+        description: "Não há despesas na sessão para salvar. Importe um arquivo ou lance manualmente.",
         variant: "destructive"
       });
       return;
@@ -91,9 +104,7 @@ export default function DespesasPage() {
     setIsSaving(true);
     
     try {
-      // Salva todos os lançamentos da sessão
       const promises = expenses.map(entry => {
-        // Sanitiza a categoria para remover barras que causam erro de caminho no Firestore
         const sanitizedCategory = entry.category.replace(/[\s/()]+/g, '_');
         const expenseId = `${entry.schoolId}_${sanitizedCategory}_2026`;
         const expenseRef = doc(db, 'municipios', municipioId, 'expenses', expenseId);
@@ -108,12 +119,11 @@ export default function DespesasPage() {
 
         return setDoc(expenseRef, data, { merge: true })
           .catch(async (error) => {
-            const permissionError = new FirestorePermissionError({
+            errorEmitter.emit('permission-error', new FirestorePermissionError({
               path: expenseRef.path,
               operation: 'write',
               requestResourceData: data,
-            });
-            errorEmitter.emit('permission-error', permissionError);
+            }));
           });
       });
 
@@ -121,10 +131,9 @@ export default function DespesasPage() {
 
       toast({
         title: "Dados Salvos",
-        description: `${expenses.length} lançamentos municipais foram persistidos com sucesso.`,
+        description: `${expenses.length} lançamentos foram gravados no banco de dados.`,
       });
     } catch (error) {
-      console.error(error);
       toast({
         title: "Erro ao Salvar",
         description: "Ocorreu um problema ao persistir os dados no banco.",
@@ -135,13 +144,49 @@ export default function DespesasPage() {
     }
   };
 
-  const handleDownloadTemplate = () => {
-    if (!schools || schools.length === 0) {
+  const handleDeleteAllFromFirestore = async () => {
+    if (!db || !municipioId) return;
+    setIsDeleting(true);
+    
+    try {
+      const expensesCol = collection(db, 'municipios', municipioId, 'expenses');
+      const snapshot = await getDocs(expensesCol);
+      
+      if (snapshot.empty) {
+        toast({ title: "Informação", description: "Não existem registros de despesas no banco de dados para este município." });
+        return;
+      }
+
+      const deletePromises = snapshot.docs.map(docSnap => {
+        return deleteDoc(docSnap.ref).catch(async () => {
+          errorEmitter.emit('permission-error', new FirestorePermissionError({
+            path: docSnap.ref.path,
+            operation: 'delete'
+          }));
+        });
+      });
+
+      await Promise.all(deletePromises);
+      setExpenses([]); // Limpa a sessão também
+
       toast({
-        title: "Sem dados",
-        description: "Nenhuma escola municipal disponível para gerar modelo.",
+        title: "Banco de Dados Limpo",
+        description: "Todos os registros de despesas foram removidos permanentemente.",
+      });
+    } catch (error) {
+      toast({
+        title: "Erro na Exclusão",
+        description: "Não foi possível remover os registros do banco.",
         variant: "destructive"
       });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleDownloadTemplate = () => {
+    if (!schools || schools.length === 0) {
+      toast({ title: "Sem dados", description: "Nenhuma escola municipal disponível para gerar modelo.", variant: "destructive" });
       return;
     }
 
@@ -155,25 +200,14 @@ export default function DespesasPage() {
       ])
     );
 
-    const csvContent = [
-      headers.join(";"),
-      ...rows.map(row => row.join(";"))
-    ].join("\n");
-
-    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const csvContent = ["\uFEFF" + headers.join(";"), ...rows.map(row => row.join(";"))].join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `modelo_despesas_municipais_${profile?.municipio || 'eti'}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
+    link.href = url;
+    link.download = `modelo_despesas_${profile?.municipio || 'eti'}.csv`;
     link.click();
-    document.body.removeChild(link);
-
-    toast({
-      title: "Modelo baixado",
-      description: "Preencha a planilha municipal e utilize o botão Importar CSV.",
-    });
+    URL.revokeObjectURL(url);
   };
 
   const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -198,10 +232,7 @@ export default function DespesasPage() {
         
         const school: any = schools.find((s: any) => s.codigo_inep === inep);
         if (school) {
-          const cleanValue = (valueStr || "0")
-            .replace(/\./g, '')
-            .replace(',', '.');
-            
+          const cleanValue = (valueStr || "0").replace(/\./g, '').replace(',', '.');
           newEntries.push({
             schoolId: school.id,
             category: category || "Outros",
@@ -212,14 +243,7 @@ export default function DespesasPage() {
 
       setExpenses(prev => [...prev, ...newEntries]);
       setIsImporting(false);
-      
-      if (newEntries.length > 0) {
-        toast({
-          title: "Importação concluída",
-          description: `${newEntries.length} lançamentos municipais processados.`,
-        });
-      }
-
+      toast({ title: "Importação concluída", description: `${newEntries.length} lançamentos carregados na sessão.` });
       if (fileInputRef.current) fileInputRef.current.value = "";
     };
 
@@ -259,36 +283,15 @@ export default function DespesasPage() {
     );
   }
 
-  if (!schools || schools.length === 0) {
-    return (
-      <div className="h-[60vh] flex flex-col items-center justify-center text-center p-8 space-y-4">
-        <AlertCircle className="h-12 w-12 text-muted-foreground/30" />
-        <h3 className="text-xl font-bold">Nenhuma escola municipal disponível</h3>
-        <p className="text-muted-foreground max-w-xs">
-          A gestão de despesas é restrita à Rede Municipal (Dependência 3). Importe o censo primeiro.
-        </p>
-        <Button asChild variant="outline">
-          <a href="/dashboard/censo">Ir para Censo Escolar</a>
-        </Button>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-headline font-bold text-primary">Gestão de Despesas: {profile?.municipio}</h2>
-          <p className="text-muted-foreground">Exclusivo: Lançamentos para a Rede Municipal de Ensino</p>
+          <h2 className="text-3xl font-headline font-bold text-primary">Gestão de Despesas</h2>
+          <p className="text-muted-foreground">Lançamentos anuais para a Rede Municipal de {profile?.municipio}</p>
         </div>
-        <div className="flex gap-2">
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            className="hidden" 
-            accept=".csv" 
-            onChange={handleImportCSV} 
-          />
+        <div className="flex flex-wrap gap-2">
+          <input type="file" ref={fileInputRef} className="hidden" accept=".csv" onChange={handleImportCSV} />
           <Button variant="outline" size="sm" className="gap-2" onClick={handleDownloadTemplate}>
             <FileSpreadsheet className="h-4 w-4" />
             Modelo CSV
@@ -319,12 +322,11 @@ export default function DespesasPage() {
             <Card className="lg:col-span-1 h-fit">
               <CardHeader>
                 <CardTitle className="text-lg">Unidade Municipal</CardTitle>
-                <CardDescription>Escolas da rede própria</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <Select value={selectedSchool} onValueChange={setSelectedSchool}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecione a escola municipal" />
+                    <SelectValue placeholder="Selecione a escola" />
                   </SelectTrigger>
                   <SelectContent>
                     {schools.map((s: any) => (
@@ -335,17 +337,17 @@ export default function DespesasPage() {
                 
                 <div className="pt-4 space-y-3 border-t">
                   <div className="flex justify-between text-xs">
-                    <span className="text-muted-foreground">Matrículas Municipais</span>
+                    <span className="text-muted-foreground">Matrículas</span>
                     <span className="font-medium">{selectedSchoolData?.total_matriculas}</span>
                   </div>
                   <div className="flex justify-between text-xs">
-                    <span className="text-muted-foreground">% ETI Municipal</span>
+                    <span className="text-muted-foreground">% ETI</span>
                     <Badge variant="secondary" className="font-bold text-[10px]">
                       {selectedSchoolData?.percentual_eti}%
                     </Badge>
                   </div>
                   <div className="pt-2">
-                    <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Lançado Session</div>
+                    <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Total na Sessão</div>
                     <div className="text-xl font-bold text-primary">
                       R$ {(schoolExpensesSum[selectedSchool] || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </div>
@@ -358,17 +360,14 @@ export default function DespesasPage() {
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
                   <CardTitle className="text-lg">Detalhamento de Custos</CardTitle>
-                  <CardDescription>Valores anuais referentes ao tesouro municipal/repasses</CardDescription>
+                  <CardDescription>Valores anuais referentes ao tesouro municipal</CardDescription>
                 </div>
-                <Button size="sm" variant="ghost" className="gap-2 text-primary hover:bg-primary/5">
-                  <Plus className="h-4 w-4" /> Adicionar Categoria
-                </Button>
               </CardHeader>
-              <CardContent className="space-y-6">
+              <CardContent>
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/30">
-                      <TableHead>Categoria de Despesa</TableHead>
+                      <TableHead>Categoria</TableHead>
                       <TableHead className="w-[200px] text-right">Valor Anual (R$)</TableHead>
                       <TableHead className="w-[50px]"></TableHead>
                     </TableRow>
@@ -377,11 +376,11 @@ export default function DespesasPage() {
                     {EXPENSE_CATEGORIES.map((cat, idx) => {
                       const entry = expenses.find(e => e.schoolId === selectedSchool && e.category === cat);
                       return (
-                        <TableRow key={idx} className="hover:bg-muted/20">
-                          <TableCell className="font-medium text-sm">{cat}</TableCell>
+                        <TableRow key={idx}>
+                          <TableCell className="font-medium">{cat}</TableCell>
                           <TableCell>
                             <Input 
-                              className="text-right font-mono text-sm" 
+                              className="text-right font-mono" 
                               placeholder="0,00" 
                               value={entry ? entry.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : ""}
                               onChange={(e) => handleUpdateValue(cat, e.target.value)}
@@ -391,7 +390,7 @@ export default function DespesasPage() {
                             <Button 
                               variant="ghost" 
                               size="icon" 
-                              className="text-muted-foreground hover:text-destructive h-8 w-8"
+                              className="h-8 w-8 text-muted-foreground hover:text-destructive"
                               onClick={() => setExpenses(prev => prev.filter(e => !(e.schoolId === selectedSchool && e.category === cat)))}
                             >
                               <Trash2 className="h-4 w-4" />
@@ -403,7 +402,7 @@ export default function DespesasPage() {
                   </TableBody>
                   <TableFooter>
                     <TableRow className="bg-primary/5 font-bold">
-                      <TableCell>TOTAL DA UNIDADE (SESSION)</TableCell>
+                      <TableCell>TOTAL DA UNIDADE (SESSÃO)</TableCell>
                       <TableCell className="text-right text-lg text-primary">
                         R$ {(schoolExpensesSum[selectedSchool] || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                       </TableCell>
@@ -421,32 +420,30 @@ export default function DespesasPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Card className="bg-primary text-white border-none shadow-lg">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-xs font-medium text-white/70 uppercase">Custo Total (Sessão)</CardTitle>
+                  <CardTitle className="text-xs font-medium text-white/70 uppercase">Custo Total Sessão</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-3xl font-bold">R$ {totalNetworkExpenses.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                  <p className="text-[10px] text-white/60 mt-2">Consolidado de {Object.keys(schoolExpensesSum).length} unidades municipais</p>
+                  <p className="text-[10px] text-white/60 mt-2">Cobertura: {Object.keys(schoolExpensesSum).length} escolas</p>
                 </CardContent>
               </Card>
               
               <Card className="border-none shadow-md">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-xs font-medium text-muted-foreground flex items-center gap-2 uppercase">
+                  <CardTitle className="text-xs font-medium text-muted-foreground uppercase flex items-center gap-2">
                     <PieChart className="h-4 w-4 text-accent" />
-                    Cobertura de Dados
+                    Eficiência de Dados
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">
-                    {Object.keys(schoolExpensesSum).length} / {schools.length}
-                  </div>
-                  <p className="text-[10px] text-muted-foreground mt-2">Unidades municipais com dados na sessão</p>
+                  <div className="text-2xl font-bold">{Object.keys(schoolExpensesSum).length} / {schools.length}</div>
+                  <p className="text-[10px] text-muted-foreground mt-2">Unidades com dados nesta sessão</p>
                 </CardContent>
               </Card>
 
               <Card className="border-none shadow-md">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-xs font-medium text-muted-foreground uppercase">Custo Médio / Aluno Municipal</CardTitle>
+                  <CardTitle className="text-xs font-medium text-muted-foreground uppercase">Custo Médio Aluno</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-accent">
@@ -462,18 +459,49 @@ export default function DespesasPage() {
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
                   <CardTitle className="text-lg">Mapa de Gastos: Rede Municipal</CardTitle>
-                  <CardDescription>Visão comparativa dos lançamentos temporários da sessão</CardDescription>
+                  <CardDescription>Gerenciamento permanente do banco de dados</CardDescription>
                 </div>
                 <div className="flex gap-2">
                   <Button 
                     variant="outline" 
                     size="sm" 
-                    className="text-destructive border-destructive hover:bg-destructive/10 gap-2"
+                    className="text-muted-foreground gap-2"
                     onClick={() => setExpenses([])}
                   >
-                    <Trash2 className="h-4 w-4" />
-                    Limpar Tudo
+                    Limpar Sessão
                   </Button>
+
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="text-destructive border-destructive hover:bg-destructive/10 gap-2"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Apagar Tudo do Banco
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Você tem certeza absoluta?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Esta ação excluirá permanentemente **TODOS os registros de despesas** do município de {profile?.municipio} no banco de dados. 
+                          Esta operação não pode ser desfeita.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction 
+                          onClick={handleDeleteAllFromFirestore}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                          Sim, Apagar Tudo
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+
                   <Button 
                     size="sm" 
                     className="gap-2 bg-green-700 hover:bg-green-800" 
@@ -481,7 +509,7 @@ export default function DespesasPage() {
                     disabled={isSaving || expenses.length === 0}
                   >
                     {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    Salvar Tudo no Banco
+                    Salvar Sessão no Banco
                   </Button>
                 </div>
               </CardHeader>
@@ -491,30 +519,27 @@ export default function DespesasPage() {
                     <Table>
                       <TableHeader className="bg-muted/80 sticky top-0 z-10 backdrop-blur-sm">
                         <TableRow>
-                          <TableHead>Escola Municipal</TableHead>
-                          <TableHead>Cód. INEP</TableHead>
+                          <TableHead>Escola</TableHead>
+                          <TableHead>INEP</TableHead>
                           <TableHead className="text-right">Matrículas</TableHead>
                           <TableHead className="text-right">ETI %</TableHead>
                           <TableHead className="text-right">Custo Anual (R$)</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {schools.map((school: any) => {
-                          const total = schoolExpensesSum[school.id] || 0;
-                          return (
-                            <TableRow key={school.id} className="hover:bg-muted/30 group">
-                              <TableCell className="font-medium text-sm">{school.nome}</TableCell>
-                              <TableCell className="font-mono text-[10px] text-muted-foreground">{school.codigo_inep}</TableCell>
-                              <TableCell className="text-right text-xs">{school.total_matriculas}</TableCell>
-                              <TableCell className="text-right">
-                                <Badge variant="outline" className="font-bold text-[10px]">{school.percentual_eti}%</Badge>
-                              </TableCell>
-                              <TableCell className="text-right font-bold text-primary text-sm">
-                                R$ {total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
+                        {schools.map((school: any) => (
+                          <TableRow key={school.id}>
+                            <TableCell className="font-medium">{school.nome}</TableCell>
+                            <TableCell className="font-mono text-xs">{school.codigo_inep}</TableCell>
+                            <TableCell className="text-right">{school.total_matriculas}</TableCell>
+                            <TableCell className="text-right">
+                              <Badge variant="outline">{school.percentual_eti}%</Badge>
+                            </TableCell>
+                            <TableCell className="text-right font-bold text-primary">
+                              R$ {(schoolExpensesSum[school.id] || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            </TableCell>
+                          </TableRow>
+                        ))}
                       </TableBody>
                     </Table>
                   </ScrollArea>
