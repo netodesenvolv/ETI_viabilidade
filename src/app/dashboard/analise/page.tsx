@@ -1,10 +1,12 @@
 
 "use client"
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { 
   BarChart, 
   Bar, 
@@ -13,21 +15,54 @@ import {
   CartesianGrid, 
   Tooltip, 
   ResponsiveContainer, 
-  Cell,
   Legend
 } from "recharts";
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from "@/components/ui/select";
 import { DEFAULT_PARAMETERS } from "@/lib/constants";
 import { calcularVAAF, calcularVAAT, calcularPNAE, calcularMDE, calcularOutros } from "@/lib/calculations";
-import { Calculator, TrendingDown, TrendingUp, AlertTriangle, CheckCircle2, Info, Loader2, ListFilter, ArrowRight } from "lucide-react";
+import { 
+  Calculator, 
+  TrendingUp, 
+  AlertTriangle, 
+  Info, 
+  Loader2, 
+  ListFilter, 
+  Download, 
+  Sparkles, 
+  Search,
+  FileText,
+  X,
+  CheckCircle2,
+  Copy,
+  Check
+} from "lucide-react";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { useAuth, useFirestore, useUser, useDoc, useCollection } from "@/firebase";
 import { doc, collection } from "firebase/firestore";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { generateExecutiveFinancialReport } from "@/ai/flows/generate-executive-financial-report";
+import { useToast } from "@/hooks/use-toast";
 
 export default function AnaliseCustoAlunoPage() {
+  const { toast } = useToast();
   const auth = useAuth();
   const db = useFirestore();
   const { user } = useUser(auth);
+
+  // Estados de Filtro
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("todos");
+  
+  // Estados de IA
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [aiReport, setAiReport] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const userProfileRef = useMemo(() => (db && user ? doc(db, 'users', user.uid) : null), [db, user]);
   const { data: profile, loading: profileLoading } = useDoc(userProfileRef);
@@ -49,15 +84,11 @@ export default function AnaliseCustoAlunoPage() {
     const municipalSchools = schools.filter(s => String(s.tp_dependencia) === '3');
     const totalMatriculasRede = municipalSchools.reduce((acc, s: any) => acc + (s.total_matriculas || 0), 0);
 
-    return municipalSchools.map((school: any) => {
+    const baseData = municipalSchools.map((school: any) => {
       const schoolExpenses = (expenses || []).filter((e: any) => e.schoolId === school.id);
       const totalDespesaReal = schoolExpenses.reduce((acc, e: any) => acc + (e.value || 0), 0);
 
-      const schoolMatriculas = school.matriculas || {
-        creche_integral: 0, creche_parcial: 0, creche_conveniada_int: 0, creche_conveniada_par: 0,
-        pre_integral: 0, pre_parcial: 0, ef_ai_integral: 0, ef_ai_parcial: 0, ef_af_integral: 0, ef_af_parcial: 0,
-        eja_fundamental: 0, eja_medio: 0, especial_aee: 0, indigena_quilombola: 0, campo_rural: 0
-      };
+      const schoolMatriculas = school.matriculas || {};
 
       const vaaf = calcularVAAF(schoolMatriculas, parametros);
       const vaat = calcularVAAT(school, parametros, totalMatriculasRede);
@@ -73,20 +104,34 @@ export default function AnaliseCustoAlunoPage() {
       const saldoPorAluno = receitaPorAluno - custoPorAluno;
       const sustentabilidade = custoPorAluno > 0 ? (receitaPorAluno / custoPorAluno) * 100 : 100;
 
+      let status = 'neutro';
+      if (custoPorAluno > 0) {
+        if (sustentabilidade >= 105) status = 'superavit';
+        else if (sustentabilidade < 95) status = 'deficit';
+      }
+
       return {
         id: school.id,
         name: school.nome,
         inep: school.codigo_inep,
         totalMatriculas,
+        totalETI: school.total_eti || 0,
         receita: Math.round(receitaPorAluno),
         custo: Math.round(custoPorAluno),
         saldo: Math.round(saldoPorAluno),
         eti: school.percentual_eti || 0,
         sustentabilidade: Math.round(sustentabilidade),
-        status: custoPorAluno === 0 ? 'neutro' : (sustentabilidade >= 105 ? 'superavit' : sustentabilidade >= 95 ? 'neutro' : 'deficit')
+        status,
+        raw: { vaaf, vaat, pnae, mde, outros, receitaTotal, totalDespesaReal }
       };
     });
-  }, [schools, expenses, parametros]);
+
+    return baseData.filter(school => {
+      const matchesSearch = school.name.toLowerCase().includes(searchTerm.toLowerCase()) || school.inep.includes(searchTerm);
+      const matchesStatus = statusFilter === "todos" ? true : school.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [schools, expenses, parametros, searchTerm, statusFilter]);
 
   const networkStats = useMemo(() => {
     if (analysisData.length === 0) return null;
@@ -100,9 +145,90 @@ export default function AnaliseCustoAlunoPage() {
       avgCusto,
       atRisk,
       sustentabilidadeMedia: avgCusto > 0 ? (avgReceita / avgCusto) * 100 : 0,
-      hasExpenses
+      hasExpenses,
+      totalMatriculas: analysisData.reduce((acc, d) => acc + d.totalMatriculas, 0),
+      totalETI: analysisData.reduce((acc, d) => acc + d.totalETI, 0)
     };
   }, [analysisData, expenses]);
+
+  const handleExportCSV = () => {
+    if (analysisData.length === 0) return;
+    
+    const headers = ["INEP", "Escola", "Matrículas", "ETI %", "Receita/Aluno", "Custo/Aluno", "Saldo/Aluno", "Sustentabilidade", "Status"];
+    const rows = analysisData.map(d => [
+      d.inep,
+      d.name,
+      d.totalMatriculas,
+      `${d.eti}%`,
+      d.receita,
+      d.custo,
+      d.saldo,
+      `${d.sustentabilidade}%`,
+      d.status.toUpperCase()
+    ]);
+
+    const csvContent = "\uFEFF" + [headers.join(";"), ...rows.map(r => r.join(";"))].join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `analise_custo_aluno_${profile?.municipio}_2026.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast({ title: "Exportação Concluída", description: "O relatório CSV foi gerado com sucesso." });
+  };
+
+  const handleGenerateAI = async () => {
+    if (!networkStats || analysisData.length === 0) return;
+    
+    setIsGenerating(true);
+    try {
+      const getSum = (key: string) => analysisData.reduce((acc, d: any) => acc + (d.raw[key] || 0), 0);
+      const totalRevenue = getSum('receitaTotal');
+
+      const input = {
+        municipio: profile?.municipio || "Município",
+        uf: profile?.uf || "BA",
+        exercicio: 2026,
+        totalMatriculas: networkStats.totalMatriculas,
+        totalETI: networkStats.totalETI,
+        percentualETI: Math.round((networkStats.totalETI / networkStats.totalMatriculas) * 100),
+        custoAlunoMedio: Math.round(networkStats.avgCusto),
+        receitaAlunoMedio: Math.round(networkStats.avgReceita),
+        saldoTotalRede: Math.round(getSum('receitaTotal') - getSum('totalDespesaReal')),
+        saldoStatus: networkStats.sustentabilidadeMedia >= 100 ? "superávit" : "déficit",
+        escolasEmDeficit: networkStats.atRisk,
+        totalEscolas: analysisData.length,
+        escolasETIlt20Percent: analysisData.filter(s => s.eti < 20).length,
+        composicaoReceitas: {
+          fundebVaaf: { amount: getSum('vaaf'), percentage: Math.round((getSum('vaaf') / totalRevenue) * 100) },
+          vaat: { amount: getSum('vaat'), percentage: Math.round((getSum('vaat') / totalRevenue) * 100) },
+          pnae: { amount: getSum('pnae'), percentage: Math.round((getSum('pnae') / totalRevenue) * 100) },
+          mdeLiquido: { amount: getSum('mde'), percentage: Math.round((getSum('mde') / totalRevenue) * 100) },
+          outros: { amount: getSum('outros'), percentage: Math.round((getSum('outros') / totalRevenue) * 100) },
+        },
+        escolasEmAtencao: analysisData
+          .filter(s => s.status === 'deficit')
+          .slice(0, 5)
+          .map(s => `${s.name}: Custo R$ ${s.custo} vs Receita R$ ${s.receita}`),
+      };
+
+      const result = await generateExecutiveFinancialReport(input);
+      setAiReport(result.report);
+      toast({ title: "Análise Concluída", description: "A IA processou os indicadores de custo-aluno." });
+    } catch (err: any) {
+      toast({ title: "Erro na IA", description: "Não foi possível gerar a narrativa técnica.", variant: "destructive" });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleCopy = () => {
+    if (!aiReport) return;
+    navigator.clipboard.writeText(aiReport);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   if (profileLoading || schoolsLoading) {
     return (
@@ -114,14 +240,8 @@ export default function AnaliseCustoAlunoPage() {
   }
 
   const chartConfig = {
-    receita: {
-      label: "Receita/Aluno",
-      color: "hsl(var(--primary))",
-    },
-    custo: {
-      label: "Custo/Aluno",
-      color: "hsl(var(--destructive))",
-    },
+    receita: { label: "Receita/Aluno", color: "hsl(var(--primary))" },
+    custo: { label: "Custo/Aluno", color: "hsl(var(--destructive))" },
   };
 
   return (
@@ -131,18 +251,77 @@ export default function AnaliseCustoAlunoPage() {
           <h2 className="text-3xl font-headline font-bold text-primary">Análise Custo-Aluno: {profile?.municipio}</h2>
           <p className="text-muted-foreground">Diagnóstico de Sustentabilidade da Rede Municipal</p>
         </div>
-        <Badge variant="outline" className="py-1 gap-2 border-primary/20 bg-primary/5 text-primary">
-           Exercício 2026
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="gap-2" onClick={handleExportCSV}>
+            <Download className="h-4 w-4" /> Exportar CSV
+          </Button>
+          <Button size="sm" className="gap-2 bg-accent hover:bg-accent/90" onClick={handleGenerateAI} disabled={isGenerating}>
+            {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            Gerar Diagnóstico IA
+          </Button>
+        </div>
       </div>
+
+      <Card className="border-none shadow-sm bg-white overflow-hidden">
+        <CardContent className="p-4 flex flex-col md:flex-row gap-4 items-center bg-muted/20">
+          <div className="relative flex-1 w-full">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input 
+              placeholder="Buscar unidade por nome ou INEP..." 
+              className="pl-9 bg-white" 
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <div className="w-full md:w-64">
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="bg-white">
+                <SelectValue placeholder="Filtrar por Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos os Status</SelectItem>
+                <SelectItem value="superavit">Apenas Superávit</SelectItem>
+                <SelectItem value="deficit">Apenas Déficit</SelectItem>
+                <SelectItem value="neutro">Apenas Neutro</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      {aiReport && (
+        <Card className="border-accent/30 bg-accent/5 shadow-lg animate-in slide-in-from-top-4 duration-500">
+          <CardHeader className="pb-2 flex flex-row items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-accent" />
+              <CardTitle className="text-lg text-accent">Parecer Técnico da IA</CardTitle>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-accent" onClick={handleCopy}>
+                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+              </Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-accent" onClick={() => setAiReport(null)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-[300px] w-full rounded-md border bg-white p-4">
+              <div className="text-sm leading-relaxed whitespace-pre-wrap text-slate-700">
+                {aiReport}
+              </div>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      )}
 
       {!networkStats?.hasExpenses && (
         <Card className="bg-orange-50 border-orange-200">
           <CardContent className="p-4 flex items-center gap-3 text-orange-800 text-sm">
             <Info className="h-5 w-5 shrink-0" />
             <p>
-              <b>Aviso:</b> Nenhuma despesa real foi lançada no banco de dados. Os indicadores de "Custo/Aluno" estão zerados. 
-              Importe seus gastos em <b>Gestão de Despesas</b> para visualizar a sustentabilidade real.
+              <b>Aviso:</b> Nenhuma despesa real foi lançada. Os indicadores de "Custo/Aluno" estão zerados. 
+              Importe seus gastos em <b>Gestão de Despesas</b> para análise real.
             </p>
           </CardContent>
         </Card>
@@ -204,7 +383,7 @@ export default function AnaliseCustoAlunoPage() {
         <Card className="lg:col-span-2 shadow-md">
           <CardHeader>
             <CardTitle className="text-lg">Divergência Financeira por Unidade</CardTitle>
-            <CardDescription>Comparativo Receita vs Custo (Base 2026)</CardDescription>
+            <CardDescription>Comparativo Receita vs Custo (Filtrado)</CardDescription>
           </CardHeader>
           <CardContent className="h-[350px]">
             <ChartContainer config={chartConfig}>
@@ -251,7 +430,7 @@ export default function AnaliseCustoAlunoPage() {
                   <p className="text-xs font-bold text-destructive uppercase">Déficit ({'<'}95%)</p>
                 </div>
                 <p className="text-[10px] text-muted-foreground leading-relaxed">
-                   O custo por aluno excede os repasses. Requer revisão imediata da matriz de gastos ou expansão de matrículas integrais para elevar o VAAf.
+                   O custo por aluno excede os repasses. Requer revisão imediata da matriz de gastos ou expansão de matrículas integrais.
                 </p>
              </div>
           </CardContent>
@@ -268,7 +447,7 @@ export default function AnaliseCustoAlunoPage() {
               <CardDescription>Indicadores granulares de viabilidade econômica</CardDescription>
             </div>
             <div className="text-[10px] text-muted-foreground font-medium flex items-center gap-1">
-              <CheckCircle2 className="h-3 w-3 text-green-500" /> Dados Municipais Consolidados
+              <CheckCircle2 className="h-3 w-3 text-green-500" /> {analysisData.length} Unidades Filtradas
             </div>
           </div>
         </CardHeader>
@@ -323,7 +502,7 @@ export default function AnaliseCustoAlunoPage() {
                   ) : (
                     <TableRow>
                       <TableCell colSpan={8} className="h-32 text-center text-muted-foreground italic">
-                        Nenhuma escola municipal encontrada para análise.
+                        Nenhuma escola municipal encontrada com os filtros aplicados.
                       </TableCell>
                     </TableRow>
                   )}
