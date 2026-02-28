@@ -93,7 +93,9 @@ export default function DespesasPage() {
     try {
       // Salva todos os lançamentos da sessão
       const promises = expenses.map(entry => {
-        const expenseId = `${entry.schoolId}_${entry.category.replace(/\s+/g, '_')}_2026`;
+        // Sanitiza a categoria para remover barras que causam erro de caminho no Firestore
+        const sanitizedCategory = entry.category.replace(/[\s/()]+/g, '_');
+        const expenseId = `${entry.schoolId}_${sanitizedCategory}_2026`;
         const expenseRef = doc(db, 'municipios', municipioId, 'expenses', expenseId);
         
         const data = {
