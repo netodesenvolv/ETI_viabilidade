@@ -79,11 +79,10 @@ export default function DespesasPage() {
       return;
     }
 
-    const schoolEntries = expenses.filter(e => e.schoolId === selectedSchool);
-    if (schoolEntries.length === 0) {
+    if (expenses.length === 0) {
       toast({
         title: "Nenhum dado",
-        description: "Lance pelo menos uma categoria de despesa.",
+        description: "Não há despesas para salvar no banco.",
         variant: "destructive"
       });
       return;
@@ -92,7 +91,8 @@ export default function DespesasPage() {
     setIsSaving(true);
     
     try {
-      const promises = schoolEntries.map(entry => {
+      // Salva todos os lançamentos da sessão
+      const promises = expenses.map(entry => {
         const expenseId = `${entry.schoolId}_${entry.category.replace(/\s+/g, '_')}_2026`;
         const expenseRef = doc(db, 'municipios', municipioId, 'expenses', expenseId);
         
@@ -118,11 +118,16 @@ export default function DespesasPage() {
       await Promise.all(promises);
 
       toast({
-        title: "Despesas salvas",
-        description: "O histórico financeiro municipal foi atualizado com sucesso.",
+        title: "Dados Salvos",
+        description: `${expenses.length} lançamentos municipais foram persistidos com sucesso.`,
       });
     } catch (error) {
       console.error(error);
+      toast({
+        title: "Erro ao Salvar",
+        description: "Ocorreu um problema ao persistir os dados no banco.",
+        variant: "destructive"
+      });
     } finally {
       setIsSaving(false);
     }
@@ -138,10 +143,7 @@ export default function DespesasPage() {
       return;
     }
 
-    // Header compatível com a lógica de importação
     const headers = ["CO_ENTIDADE", "NO_ENTIDADE", "Categoria", "Valor_Anual"];
-    
-    // Gera linhas para todas as escolas em todas as categorias
     const rows = schools.flatMap((school: any) => 
       EXPENSE_CATEGORIES.map(cat => [
         school.codigo_inep,
@@ -156,7 +158,6 @@ export default function DespesasPage() {
       ...rows.map(row => row.join(";"))
     ].join("\n");
 
-    // Adiciona BOM para garantir compatibilidade com Excel e caracteres especiais
     const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -214,12 +215,6 @@ export default function DespesasPage() {
         toast({
           title: "Importação concluída",
           description: `${newEntries.length} lançamentos municipais processados.`,
-        });
-      } else {
-        toast({
-          title: "Atenção",
-          description: "Nenhum dado válido de escola municipal encontrado.",
-          variant: "destructive"
         });
       }
 
@@ -292,13 +287,17 @@ export default function DespesasPage() {
             accept=".csv" 
             onChange={handleImportCSV} 
           />
-          <Button variant="outline" className="gap-2" onClick={handleDownloadTemplate}>
+          <Button variant="outline" size="sm" className="gap-2" onClick={handleDownloadTemplate}>
             <FileSpreadsheet className="h-4 w-4" />
-            Baixar Modelo CSV
+            Modelo CSV
           </Button>
-          <Button variant="outline" className="gap-2" onClick={() => fileInputRef.current?.click()} disabled={isImporting}>
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => fileInputRef.current?.click()} disabled={isImporting}>
             {isImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            Importar CSV Municipal
+            Importar CSV
+          </Button>
+          <Button size="sm" className="gap-2 bg-green-700 hover:bg-green-800" onClick={handleSave} disabled={isSaving || expenses.length === 0}>
+            {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Salvar no Banco
           </Button>
         </div>
       </div>
@@ -344,7 +343,7 @@ export default function DespesasPage() {
                     </Badge>
                   </div>
                   <div className="pt-2">
-                    <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Total Lançado Anual</div>
+                    <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Lançado Session</div>
                     <div className="text-xl font-bold text-primary">
                       R$ {(schoolExpensesSum[selectedSchool] || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </div>
@@ -356,7 +355,7 @@ export default function DespesasPage() {
             <Card className="lg:col-span-3">
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
-                  <CardTitle className="text-lg">Detalhamento de Custos Municipais</CardTitle>
+                  <CardTitle className="text-lg">Detalhamento de Custos</CardTitle>
                   <CardDescription>Valores anuais referentes ao tesouro municipal/repasses</CardDescription>
                 </div>
                 <Button size="sm" variant="ghost" className="gap-2 text-primary hover:bg-primary/5">
@@ -391,7 +390,7 @@ export default function DespesasPage() {
                               variant="ghost" 
                               size="icon" 
                               className="text-muted-foreground hover:text-destructive h-8 w-8"
-                              onClick={() => setExpenses(prev => prev.filter(e => !(e.schoolId === selectedSchool && e.category === category)))}
+                              onClick={() => setExpenses(prev => prev.filter(e => !(e.schoolId === selectedSchool && e.category === cat)))}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -402,7 +401,7 @@ export default function DespesasPage() {
                   </TableBody>
                   <TableFooter>
                     <TableRow className="bg-primary/5 font-bold">
-                      <TableCell>TOTAL DA UNIDADE MUNICIPAL</TableCell>
+                      <TableCell>TOTAL DA UNIDADE (SESSION)</TableCell>
                       <TableCell className="text-right text-lg text-primary">
                         R$ {(schoolExpensesSum[selectedSchool] || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                       </TableCell>
@@ -410,14 +409,6 @@ export default function DespesasPage() {
                     </TableRow>
                   </TableFooter>
                 </Table>
-                
-                <div className="flex justify-end gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setExpenses(prev => prev.filter(e => e.schoolId !== selectedSchool))}>Limpar Lançamentos</Button>
-                  <Button size="sm" onClick={handleSave} className="gap-2 shadow-lg shadow-primary/20" disabled={isSaving}>
-                    {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    {isSaving ? "Salvando..." : "Salvar no Banco"}
-                  </Button>
-                </div>
               </CardContent>
             </Card>
           </div>
@@ -428,11 +419,11 @@ export default function DespesasPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Card className="bg-primary text-white border-none shadow-lg">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-xs font-medium text-white/70 uppercase">Custo Total da Rede Municipal</CardTitle>
+                  <CardTitle className="text-xs font-medium text-white/70 uppercase">Custo Total (Sessão)</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-3xl font-bold">R$ {totalNetworkExpenses.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                  <p className="text-[10px] text-white/60 mt-2">Consolidado de {schools.length} unidades municipais</p>
+                  <p className="text-[10px] text-white/60 mt-2">Consolidado de {Object.keys(schoolExpensesSum).length} unidades municipais</p>
                 </CardContent>
               </Card>
               
@@ -469,17 +460,28 @@ export default function DespesasPage() {
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
                   <CardTitle className="text-lg">Mapa de Gastos: Rede Municipal</CardTitle>
-                  <CardDescription>Visão comparativa exclusiva para a rede própria do município</CardDescription>
+                  <CardDescription>Visão comparativa dos lançamentos temporários da sessão</CardDescription>
                 </div>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="text-destructive border-destructive hover:bg-destructive/10 gap-2"
-                  onClick={() => setExpenses([])}
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Limpar Todos os Dados
-                </Button>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="text-destructive border-destructive hover:bg-destructive/10 gap-2"
+                    onClick={() => setExpenses([])}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Limpar Tudo
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    className="gap-2 bg-green-700 hover:bg-green-800" 
+                    onClick={handleSave} 
+                    disabled={isSaving || expenses.length === 0}
+                  >
+                    {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                    Salvar Tudo no Banco
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="border rounded-xl overflow-hidden">
@@ -492,13 +494,11 @@ export default function DespesasPage() {
                           <TableHead className="text-right">Matrículas</TableHead>
                           <TableHead className="text-right">ETI %</TableHead>
                           <TableHead className="text-right">Custo Anual (R$)</TableHead>
-                          <TableHead className="text-right">R$/Aluno</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {schools.map((school: any) => {
                           const total = schoolExpensesSum[school.id] || 0;
-                          const perStudent = school.total_matriculas > 0 ? total / school.total_matriculas : 0;
                           return (
                             <TableRow key={school.id} className="hover:bg-muted/30 group">
                               <TableCell className="font-medium text-sm">{school.nome}</TableCell>
@@ -510,22 +510,10 @@ export default function DespesasPage() {
                               <TableCell className="text-right font-bold text-primary text-sm">
                                 R$ {total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                               </TableCell>
-                              <TableCell className="text-right font-mono text-[10px] text-muted-foreground">
-                                R$ {perStudent.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              </TableCell>
                             </TableRow>
                           );
                         })}
                       </TableBody>
-                      <TableFooter className="bg-muted/50 font-bold sticky bottom-0">
-                        <TableRow>
-                          <TableCell colSpan={4}>TOTAL CONSOLIDADO REDE MUNICIPAL</TableCell>
-                          <TableCell className="text-right text-lg">
-                            R$ {totalNetworkExpenses.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                          </TableCell>
-                          <TableCell></TableCell>
-                        </TableRow>
-                      </TableFooter>
                     </Table>
                   </ScrollArea>
                 </div>
