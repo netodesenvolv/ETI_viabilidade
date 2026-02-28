@@ -3,7 +3,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { KPICard } from "@/components/dashboard/kpi-card";
-import { Users, GraduationCap, DollarSign, AlertCircle, TrendingUp, Sparkles, FileText, Download, Loader2, Filter, Layers, Copy, Check, FileDown, ShieldCheck, Scale } from "lucide-react";
+import { Users, GraduationCap, DollarSign, AlertCircle, TrendingUp, Sparkles, FileText, Download, Loader2, Filter, Layers, Copy, Check, FileDown, ShieldCheck, Scale, Info } from "lucide-react";
 import { DEFAULT_PARAMETERS } from "@/lib/constants";
 import { calcularVAAF, calcularVAAT, calcularPNAE, calcularMDE, calcularOutros } from "@/lib/calculations";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -79,7 +79,9 @@ export default function DashboardPage() {
       const receitaTotal = vaaf + vaat + pnae + mde + outros;
       const schoolExpenses = (allExpenses || []).filter((e: any) => e.schoolId === school.id);
       const despesaReal = schoolExpenses.reduce((acc, e: any) => acc + (e.value || 0), 0);
-      const despesaTotal = despesaReal > 0 ? despesaReal : (receitaTotal * 0.95);
+      
+      // Ajuste: Se não houver despesa real, não projetamos 95%. Usamos a despesa real (que pode ser 0).
+      const despesaTotal = despesaReal;
       
       const saldo = receitaTotal - despesaTotal;
       const cobertura = despesaTotal > 0 ? receitaTotal / despesaTotal : 1;
@@ -87,7 +89,8 @@ export default function DashboardPage() {
       const receitaAluno = (school.total_matriculas || 0) > 0 ? receitaTotal / school.total_matriculas : 0;
 
       let status: 'superavit' | 'neutro' | 'deficit' = 'superavit';
-      if (cobertura <= 0.98) status = 'deficit';
+      if (despesaTotal === 0) status = 'neutro'; // Sem dados de custo
+      else if (cobertura <= 0.98) status = 'deficit';
       else if (cobertura < 1.02) status = 'neutro';
 
       return {
@@ -123,8 +126,11 @@ export default function DashboardPage() {
     const currentAvgCusto = schoolAnalyses.length > 0 ? schoolAnalyses.reduce((acc, s) => acc + s.custoAluno, 0) / schoolAnalyses.length : 0;
     const currentTotalReceita = schoolAnalyses.reduce((acc, s) => acc + s.receitaTotal, 0);
 
-    // Lógica Nativa de Apreciação Técnica (Normativa)
     const percETI = totalMatriculasRede > 0 ? (totalETIRede / totalMatriculasRede) * 100 : 0;
+    
+    // Alerta se não houver despesas lançadas
+    const hasExpenses = (allExpenses || []).length > 0;
+
     const technicalInsights = [
       {
         title: "Meta PNE (Tempo Integral)",
@@ -135,10 +141,10 @@ export default function DashboardPage() {
       },
       {
         title: "Sustentabilidade Operacional",
-        value: currentTotalSaldo >= 0 ? "Superavitário" : "Déficit",
-        status: currentTotalSaldo >= 0 ? "Equilibrado" : "Alerta Fiscal",
-        description: currentTotalSaldo >= 0 ? "A receita municipal cobre os custos projetados." : "A rede opera acima da capacidade de repasse atual.",
-        variant: currentTotalSaldo >= 0 ? "success" : "destructive"
+        value: !hasExpenses ? "Aguardando Dados" : (currentTotalSaldo >= 0 ? "Superavitário" : "Déficit"),
+        status: !hasExpenses ? "Sem Lançamentos" : (currentTotalSaldo >= 0 ? "Equilibrado" : "Alerta Fiscal"),
+        description: !hasExpenses ? "Lance as despesas em 'Gestão de Despesas' para análise." : (currentTotalSaldo >= 0 ? "A receita municipal cobre os custos projetados." : "A rede opera acima da capacidade de repasse atual."),
+        variant: !hasExpenses ? "info" : (currentTotalSaldo >= 0 ? "success" : "destructive")
       },
       {
         title: "Fator VAAf/Integral",
@@ -158,7 +164,8 @@ export default function DashboardPage() {
         totalSaldo: currentTotalSaldo,
         deficitCount: currentDeficitCount,
         avgCusto: currentAvgCusto,
-        receitaAlunoMedio: currentTotalReceita / (schoolAnalyses.reduce((acc, s) => acc + (s.total_matriculas || 0), 0) || 1)
+        receitaAlunoMedio: currentTotalReceita / (schoolAnalyses.reduce((acc, s) => acc + (s.total_matriculas || 0), 0) || 1),
+        hasExpenses
       },
       networkTotals: municipalRevenue,
       nativeInsights: technicalInsights
@@ -296,10 +303,22 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {!stats?.hasExpenses && (
+        <Card className="bg-orange-50 border-orange-200">
+          <CardContent className="p-4 flex items-center gap-3 text-orange-800">
+            <Info className="h-5 w-5 shrink-0" />
+            <p className="text-xs">
+              <b>Aviso:</b> Nenhuma despesa real encontrada para este município. Os índices de custo-aluno e saldo estão zerados. 
+              Realize o upload das despesas em <a href="/dashboard/despesas" className="underline font-bold">Gestão de Despesas</a> para uma análise real.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard title="Matrículas Municipais" value={mounted ? stats?.totalMatriculasRede.toLocaleString('pt-BR') : "0"} icon={Users} subtitle="Rede direta" />
         <KPICard title="Alunos em ETI" value={`${stats?.percentualETI.toFixed(1)}%`} icon={GraduationCap} subtitle={`${stats?.totalETIRede} alunos integrais`} />
-        <KPICard title="Saldo Estimado" value={`R$ ${mounted ? (stats?.totalSaldo! / 1000).toFixed(1) : "0"}k`} icon={DollarSign} subtitle={stats?.totalSaldo! >= 0 ? "Superávit" : "Déficit"} className={stats?.totalSaldo! >= 0 ? "bg-green-50/50 border-green-200" : "bg-red-50/50 border-red-200"} />
+        <KPICard title="Saldo Estimado" value={`R$ ${mounted ? (stats?.totalSaldo! / 1000).toFixed(1) : "0"}k`} icon={DollarSign} subtitle={stats?.hasExpenses ? (stats?.totalSaldo! >= 0 ? "Superávit" : "Déficit") : "Aguardando Despesas"} className={stats?.hasExpenses ? (stats?.totalSaldo! >= 0 ? "bg-green-50/50 border-green-200" : "bg-red-50/50 border-red-200") : "bg-muted/30 border-dashed"} />
         <KPICard title="Unidades em Risco" value={stats?.deficitCount || 0} icon={AlertCircle} subtitle="Cenário de déficit" className={stats?.deficitCount! > 0 ? "bg-orange-50/50 border-orange-200" : ""} />
       </div>
 
@@ -361,7 +380,7 @@ export default function DashboardPage() {
                           </div>
                         </TableCell>
                         <TableCell className="text-right font-mono">R$ {mounted ? Math.round(school.receitaAluno).toLocaleString('pt-BR') : "0"}</TableCell>
-                        <TableCell className="text-right font-mono">R$ {mounted ? Math.round(school.custoAluno).toLocaleString('pt-BR') : "0"}</TableCell>
+                        <TableCell className="text-right font-mono text-muted-foreground">R$ {mounted ? Math.round(school.custoAluno).toLocaleString('pt-BR') : "0"}</TableCell>
                         <TableCell className="text-right font-bold text-accent">{school.percentual_eti || 0}%</TableCell>
                         <TableCell>
                           <Badge variant={school.status === 'superavit' ? 'default' : school.status === 'deficit' ? 'destructive' : 'secondary'} className={school.status === 'superavit' ? 'bg-green-600' : ''}>

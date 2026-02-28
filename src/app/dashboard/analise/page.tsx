@@ -68,14 +68,10 @@ export default function AnaliseCustoAlunoPage() {
       const totalMatriculas = school.total_matriculas || 0;
       const receitaPorAluno = totalMatriculas > 0 ? receitaTotal / totalMatriculas : 0;
 
+      // Ajuste: Se não houver despesa lançada, o custo é 0. Sem fallbacks estimados.
       let custoPorAluno = 0;
       if (totalDespesaReal > 0 && totalMatriculas > 0) {
         custoPorAluno = totalDespesaReal / totalMatriculas;
-      } else {
-        const percentualETI = school.percentual_eti || 0;
-        const fatorETI = 1 + (percentualETI / 100) * 0.45;
-        const custoBase = 6400; 
-        custoPorAluno = custoBase * fatorETI;
       }
       
       const saldoPorAluno = receitaPorAluno - custoPorAluno;
@@ -89,7 +85,7 @@ export default function AnaliseCustoAlunoPage() {
         saldo: Math.round(saldoPorAluno),
         eti: school.percentual_eti || 0,
         sustentabilidade: Math.round(sustentabilidade),
-        status: sustentabilidade >= 105 ? 'superavit' : sustentabilidade >= 95 ? 'neutro' : 'deficit'
+        status: custoPorAluno === 0 ? 'neutro' : (sustentabilidade >= 105 ? 'superavit' : sustentabilidade >= 95 ? 'neutro' : 'deficit')
       };
     });
   }, [schools, expenses, parametros]);
@@ -99,14 +95,16 @@ export default function AnaliseCustoAlunoPage() {
     const avgReceita = analysisData.reduce((acc, d) => acc + d.receita, 0) / analysisData.length;
     const avgCusto = analysisData.reduce((acc, d) => acc + d.custo, 0) / analysisData.length;
     const atRisk = analysisData.filter(d => d.status === 'deficit').length;
+    const hasExpenses = (expenses || []).length > 0;
     
     return {
       avgReceita,
       avgCusto,
       atRisk,
-      sustentabilidadeMedia: avgCusto > 0 ? (avgReceita / avgCusto) * 100 : 0
+      sustentabilidadeMedia: avgCusto > 0 ? (avgReceita / avgCusto) * 100 : 0,
+      hasExpenses
     };
-  }, [analysisData]);
+  }, [analysisData, expenses]);
 
   if (profileLoading || schoolsLoading) {
     return (
@@ -135,6 +133,18 @@ export default function AnaliseCustoAlunoPage() {
         <p className="text-muted-foreground">Exclusivo: Comparativo Financeiro da Rede Municipal de Ensino</p>
       </div>
 
+      {!networkStats?.hasExpenses && (
+        <Card className="bg-orange-50 border-orange-200">
+          <CardContent className="p-4 flex items-center gap-3 text-orange-800 text-sm">
+            <Info className="h-5 w-5 shrink-0" />
+            <p>
+              <b>Aviso:</b> Nenhuma despesa real foi lançada. Os dados de "Custo/Aluno" abaixo estão zerados. 
+              Importe seus gastos para visualizar a sustentabilidade real de cada unidade.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="border-none shadow-sm bg-white">
           <CardHeader className="pb-2">
@@ -153,7 +163,9 @@ export default function AnaliseCustoAlunoPage() {
             <CardTitle className="text-xs font-bold text-muted-foreground uppercase">Média Custo/Aluno (Rede)</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">R$ {networkStats?.avgCusto.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) || "0"}</div>
+            <div className={`text-2xl font-bold ${!networkStats?.hasExpenses ? 'text-muted-foreground/30' : ''}`}>
+              R$ {networkStats?.avgCusto.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) || "0"}
+            </div>
             <div className="flex items-center gap-1 text-orange-600 text-xs mt-1">
               <Calculator className="h-3 w-3" /> Custos Operacionais
             </div>
