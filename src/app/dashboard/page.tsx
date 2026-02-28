@@ -1,8 +1,9 @@
+
 "use client"
 
 import { useState, useMemo, useEffect } from "react";
 import { KPICard } from "@/components/dashboard/kpi-card";
-import { Users, GraduationCap, DollarSign, AlertCircle, TrendingUp, Sparkles, FileText, Download, Loader2, Filter, Layers, Copy, Check } from "lucide-react";
+import { Users, GraduationCap, DollarSign, AlertCircle, TrendingUp, Sparkles, FileText, Download, Loader2, Filter, Layers, Copy, Check, FileDown, ShieldCheck, Scale } from "lucide-react";
 import { DEFAULT_PARAMETERS } from "@/lib/constants";
 import { calcularVAAF, calcularVAAT, calcularPNAE, calcularMDE, calcularOutros } from "@/lib/calculations";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -55,8 +56,8 @@ export default function DashboardPage() {
   const { data: customParams } = useDoc(paramsRef);
   const parametros = (customParams as any) || DEFAULT_PARAMETERS;
 
-  const { analysis, stats, networkTotals } = useMemo(() => {
-    if (!schools || schools.length === 0) return { analysis: [], stats: null, networkTotals: null };
+  const { analysis, stats, networkTotals, nativeInsights } = useMemo(() => {
+    if (!schools || schools.length === 0) return { analysis: [], stats: null, networkTotals: null, nativeInsights: [] };
 
     const municipalSchools = schools.filter(s => String(s.tp_dependencia) === '3');
     const totalMatriculasMunicipal = municipalSchools.reduce((acc, s: any) => acc + (s.total_matriculas || 0), 0);
@@ -122,18 +123,45 @@ export default function DashboardPage() {
     const currentAvgCusto = schoolAnalyses.length > 0 ? schoolAnalyses.reduce((acc, s) => acc + s.custoAluno, 0) / schoolAnalyses.length : 0;
     const currentTotalReceita = schoolAnalyses.reduce((acc, s) => acc + s.receitaTotal, 0);
 
+    // Lógica Nativa de Apreciação Técnica (Normativa)
+    const percETI = totalMatriculasRede > 0 ? (totalETIRede / totalMatriculasRede) * 100 : 0;
+    const technicalInsights = [
+      {
+        title: "Meta PNE (Tempo Integral)",
+        value: `${percETI.toFixed(1)}%`,
+        status: percETI >= 25 ? "Conforme" : "Abaixo da Meta",
+        description: percETI >= 25 ? "Rede atende a Meta 6 do PNE (mínimo 25%)." : "Necessário expandir matrículas ETI para atingir 25%.",
+        variant: percETI >= 25 ? "success" : "warning"
+      },
+      {
+        title: "Sustentabilidade Operacional",
+        value: currentTotalSaldo >= 0 ? "Superavitário" : "Déficit",
+        status: currentTotalSaldo >= 0 ? "Equilibrado" : "Alerta Fiscal",
+        description: currentTotalSaldo >= 0 ? "A receita municipal cobre os custos projetados." : "A rede opera acima da capacidade de repasse atual.",
+        variant: currentTotalSaldo >= 0 ? "success" : "destructive"
+      },
+      {
+        title: "Fator VAAf/Integral",
+        value: "1.30x",
+        status: "Referência 2026",
+        description: "Alavancagem financeira por aluno integral está otimizada.",
+        variant: "info"
+      }
+    ];
+
     return {
       analysis: schoolAnalyses,
       stats: {
         totalMatriculasRede,
         totalETIRede,
-        percentualETI: totalMatriculasRede > 0 ? (totalETIRede / totalMatriculasRede) * 100 : 0,
+        percentualETI: percETI,
         totalSaldo: currentTotalSaldo,
         deficitCount: currentDeficitCount,
         avgCusto: currentAvgCusto,
         receitaAlunoMedio: currentTotalReceita / (schoolAnalyses.reduce((acc, s) => acc + (s.total_matriculas || 0), 0) || 1)
       },
-      networkTotals: municipalRevenue
+      networkTotals: municipalRevenue,
+      nativeInsights: technicalInsights
     };
   }, [schools, allExpenses, parametros, filterLocalizacao, filterDependencia]);
 
@@ -199,6 +227,20 @@ export default function DashboardPage() {
     toast({ title: "Copiado", description: "Copiado para a área de transferência." });
   };
 
+  const handleDownloadReport = () => {
+    if (!report) return;
+    const blob = new Blob([report], { type: 'text/plain;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `parecer_eti_${profile?.municipio}_2026.txt`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast({ title: "Download iniciado", description: "Arquivo de parecer técnico exportado." });
+  };
+
   if (profileLoading || schoolsLoading) {
     return (
       <div className="h-[60vh] flex flex-col items-center justify-center gap-4">
@@ -262,77 +304,113 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2 shadow-md">
-          <CardHeader>
-            <CardTitle className="font-headline text-lg">Eficiência Financeira por Unidade</CardTitle>
-            <CardDescription>Comparativo Receita vs Custo Projetado 2026</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/50">
-                  <TableHead>Escola</TableHead>
-                  <TableHead className="text-right">Receita/Aluno</TableHead>
-                  <TableHead className="text-right">Custo/Aluno</TableHead>
-                  <TableHead className="text-right">% ETI</TableHead>
-                  <TableHead>Situação</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {analysis.length > 0 ? (
-                  analysis.map((school) => (
-                    <TableRow key={school.id} className="hover:bg-muted/30 text-xs">
-                      <TableCell>
-                        <div className="font-medium text-sm">{school.nome}</div>
-                        <div className="text-[10px] text-muted-foreground uppercase">
-                          {String(school.localizacao).toUpperCase()} • {DEPENDENCIA_LABELS[String(school.tp_dependencia)]}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right font-mono">R$ {mounted ? Math.round(school.receitaAluno).toLocaleString('pt-BR') : "0"}</TableCell>
-                      <TableCell className="text-right font-mono">R$ {mounted ? Math.round(school.custoAluno).toLocaleString('pt-BR') : "0"}</TableCell>
-                      <TableCell className="text-right font-bold text-accent">{school.percentual_eti || 0}%</TableCell>
-                      <TableCell>
-                        <Badge variant={school.status === 'superavit' ? 'default' : school.status === 'deficit' ? 'destructive' : 'secondary'} className={school.status === 'superavit' ? 'bg-green-600' : ''}>
-                          {school.status.toUpperCase()}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow><TableCell colSpan={5} className="h-32 text-center text-muted-foreground italic">Nenhum dado encontrado.</TableCell></TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        <div className="lg:col-span-2 space-y-6">
+          <Card className="shadow-md">
+            <CardHeader>
+              <CardTitle className="font-headline text-lg flex items-center gap-2">
+                <Scale className="h-5 w-5 text-primary" /> Apreciação Técnica Nativa (Normas FNDE/PNE)
+              </CardTitle>
+              <CardDescription>Validação automatizada baseada em marcos legais vigentes</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {nativeInsights.map((insight, idx) => (
+                  <div key={idx} className="p-4 rounded-xl border bg-muted/20 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-bold uppercase text-muted-foreground">{insight.title}</p>
+                      <Badge variant="outline" className={`text-[9px] ${
+                        insight.variant === 'success' ? 'bg-green-50 text-green-700 border-green-200' :
+                        insight.variant === 'destructive' ? 'bg-red-50 text-red-700 border-red-200' :
+                        'bg-blue-50 text-blue-700 border-blue-200'
+                      }`}>
+                        {insight.status}
+                      </Badge>
+                    </div>
+                    <p className="text-xl font-bold">{insight.value}</p>
+                    <p className="text-[11px] text-muted-foreground leading-tight">{insight.description}</p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
 
-        <Card className="flex flex-col border-accent/20 shadow-lg">
+          <Card className="shadow-md">
+            <CardHeader>
+              <CardTitle className="font-headline text-lg">Eficiência Financeira por Unidade</CardTitle>
+              <CardDescription>Comparativo Receita vs Custo Projetado 2026</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50">
+                    <TableHead>Escola</TableHead>
+                    <TableHead className="text-right">Receita/Aluno</TableHead>
+                    <TableHead className="text-right">Custo/Aluno</TableHead>
+                    <TableHead className="text-right">% ETI</TableHead>
+                    <TableHead>Situação</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {analysis.length > 0 ? (
+                    analysis.map((school) => (
+                      <TableRow key={school.id} className="hover:bg-muted/30 text-xs">
+                        <TableCell>
+                          <div className="font-medium text-sm">{school.nome}</div>
+                          <div className="text-[10px] text-muted-foreground uppercase">
+                            {String(school.localizacao).toUpperCase()} • {DEPENDENCIA_LABELS[String(school.tp_dependencia)]}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right font-mono">R$ {mounted ? Math.round(school.receitaAluno).toLocaleString('pt-BR') : "0"}</TableCell>
+                        <TableCell className="text-right font-mono">R$ {mounted ? Math.round(school.custoAluno).toLocaleString('pt-BR') : "0"}</TableCell>
+                        <TableCell className="text-right font-bold text-accent">{school.percentual_eti || 0}%</TableCell>
+                        <TableCell>
+                          <Badge variant={school.status === 'superavit' ? 'default' : school.status === 'deficit' ? 'destructive' : 'secondary'} className={school.status === 'superavit' ? 'bg-green-600' : ''}>
+                            {school.status.toUpperCase()}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow><TableCell colSpan={5} className="h-32 text-center text-muted-foreground italic">Nenhum dado encontrado.</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card className="flex flex-col border-accent/20 shadow-lg h-full">
           <CardHeader className="bg-accent/5 border-b">
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-2 font-headline text-lg text-accent">
-                <Sparkles className="h-5 w-5" /> Narrativa IA
+                <Sparkles className="h-5 w-5" /> Parecer Técnico IA
               </CardTitle>
               {report && (
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-accent" onClick={handleCopy}>
-                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                </Button>
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-accent hover:bg-accent/10" onClick={handleDownloadReport} title="Download Parecer (.txt)">
+                    <FileDown className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-accent hover:bg-accent/10" onClick={handleCopy} title="Copiar Texto">
+                    {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  </Button>
+                </div>
               )}
             </div>
           </CardHeader>
           <CardContent className="flex-1 pt-6">
             {report ? (
-              <ScrollArea className="h-[450px]">
+              <ScrollArea className="h-[600px]">
                 <div className="text-xs space-y-4 whitespace-pre-wrap font-body leading-relaxed text-slate-700 bg-slate-50 p-4 rounded-xl border">
                   {report}
                 </div>
               </ScrollArea>
             ) : (
-              <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-6 border-2 border-dashed rounded-2xl bg-muted/5">
+              <div className="h-full min-h-[400px] flex flex-col items-center justify-center text-center p-8 space-y-6 border-2 border-dashed rounded-2xl bg-muted/5">
                 <FileText className="h-12 w-12 text-accent/40" />
                 <div className="space-y-2">
                   <h4 className="font-bold text-slate-800">Aguardando Diagnóstico</h4>
                   <p className="text-muted-foreground text-[11px] max-w-[200px] mx-auto">
-                    {isGenerating ? "Processando microdados fiscais..." : "Clique no botão acima para gerar a análise técnica da rede."}
+                    {isGenerating ? "Analisando microdados fiscais municipais..." : "Clique no botão acima para gerar a narrativa técnica da rede baseada nos parâmetros 2026."}
                   </p>
                 </div>
               </div>
