@@ -139,10 +139,12 @@ export default function DespesasPage() {
       return;
     }
 
+    // Header compatível com a lógica de importação
     const headers = ["CO_ENTIDADE", "NO_ENTIDADE", "Categoria", "Valor_Anual"];
     
+    // Gera linhas para todas as escolas em todas as categorias
     const rows = schools.flatMap((school: any) => 
-      EXPENSE_CATEGORIES.slice(0, 3).map(cat => [
+      EXPENSE_CATEGORIES.map(cat => [
         school.codigo_inep,
         school.nome,
         cat,
@@ -155,6 +157,7 @@ export default function DespesasPage() {
       ...rows.map(row => row.join(";"))
     ].join("\n");
 
+    // Adiciona BOM para garantir compatibilidade com Excel e caracteres especiais
     const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -188,7 +191,8 @@ export default function DespesasPage() {
         if (!line) continue;
         
         const separator = line.includes(';') ? ';' : ',';
-        const [inep, name, category, valueStr] = line.split(separator);
+        const parts = line.split(separator).map(p => p.trim().replace(/"/g, ''));
+        const [inep, name, category, valueStr] = parts;
         
         const school: any = schools.find((s: any) => s.codigo_inep === inep);
         if (school) {
@@ -289,6 +293,10 @@ export default function DespesasPage() {
             accept=".csv" 
             onChange={handleImportCSV} 
           />
+          <Button variant="outline" className="gap-2" onClick={handleDownloadTemplate}>
+            <FileSpreadsheet className="h-4 w-4" />
+            Baixar Modelo CSV
+          </Button>
           <Button variant="outline" className="gap-2" onClick={() => fileInputRef.current?.click()} disabled={isImporting}>
             {isImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             Importar CSV Municipal
