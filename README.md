@@ -2,13 +2,16 @@
 
 Este é um sistema avançado para análise de viabilidade financeira e técnica de **Escolas em Tempo Integral (ETI)** para redes municipais de educação.
 
+## 🚀 Repositório Oficial
+Acompanhe o desenvolvimento em: [https://github.com/netodesenvolv/ETI_viabilidade](https://github.com/netodesenvolv/ETI_viabilidade)
+
 ## Principais Funcionalidades
 
-- **Diagnóstico com IA:** Geração de pareceres técnicos narrativos baseados em microdados do Censo Escolar e do FUNDEB 2026.
-- **Simulador ETI:** Projeções de impacto fiscal e físico (conversão 1:1 ou 1:2) para expansão de turmas integrais.
-- **Gestão de Despesas:** Lançamento e auditoria de custos operacionais segmentados por unidade escolar.
-- **Mapa de Receitas:** Cálculo automatizado de repasses VAAf, VAAT e PNAE com base em parâmetros customizáveis.
-- **Análise Custo-Aluno:** Monitoramento da sustentabilidade financeira (Superávit/Déficit) de cada escola.
+- **Diagnóstico com IA:** Geração de pareceres técnicos narrativos baseados em microdados do Censo Escolar e parâmetros do FUNDEB 2026.
+- **Simulador ETI Flexível:** Projeções de impacto fiscal e físico com lógica de conversão 1:1 ou 1:2 (capacidade de sala).
+- **Gestão de Despesas:** Lançamento e auditoria de custos operacionais segmentados por unidade escolar com limpeza em lote.
+- **Análise Custo-Aluno:** Monitoramento da sustentabilidade financeira (Superávit/Déficit) com exportação para CSV.
+- **Apreciação Técnica Nativa:** Validação algorítmica baseada nas metas do PNE (Meta 6).
 
 ## Tecnologias Utilizadas
 
@@ -17,17 +20,13 @@ Este é um sistema avançado para análise de viabilidade financeira e técnica 
 - **Backend/Database:** Firebase (Auth, Firestore).
 - **IA/LLM:** Genkit com Google Gemini 2.5 Flash.
 
-## Como configurar o repositório no GitHub
+## Manutenção do Repositório
 
-Se você acabou de criar este projeto no Firebase Studio e deseja salvá-lo:
+Sempre que fizermos mudanças importantes, você pode atualizar o GitHub com estes comandos no terminal:
 
-1. Abra o terminal integrado.
-2. Execute `git init`.
-3. Adicione os arquivos: `git add .`.
-4. Faça o commit: `git commit -m "Initial commit"`.
-5. Crie um repositório no GitHub.
-6. Adicione o remote: `git remote add origin https://github.com/SEU_USUARIO/SEU_REPOSITORIO.git`.
-7. Envie os dados: `git push -u origin main`.
+1. `git add .`
+2. `git commit -m "Descrição da melhoria"`
+3. `git push`
 
 ---
-Desenvolvido como protótipo de alta fidelidade para gestão de redes municipais.
+Desenvolvido como protótipo de alta fidelidade para gestão estratégica de redes municipais.
