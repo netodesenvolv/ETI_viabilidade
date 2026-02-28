@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Save, FileSpreadsheet, Plus, Trash2, Download, Upload, Loader2, Building2, Landmark, PieChart, FileText, AlertCircle, AlertTriangle } from "lucide-react";
+import { Save, FileSpreadsheet, Plus, Trash2, Download, Upload, Loader2, Building2, Landmark, PieChart, FileText, AlertCircle, AlertTriangle, Calculator, Share2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -16,6 +16,7 @@ import { useAuth, useFirestore, useUser, useDoc, useCollection } from "@/firebas
 import { doc, setDoc, collection, getDocs, deleteDoc } from "firebase/firestore";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
+import { Label } from "@/components/ui/label";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,7 +37,7 @@ const EXPENSE_CATEGORIES = [
   "Transporte",
   "Utilidades (Energia/Água)",
   "Material Didático",
-  "Serviços Terceirizados",
+  "Serviços Terceirizados",
   "Outros",
 ];
 
@@ -54,6 +55,10 @@ export default function DespesasPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   
+  // Estados para Rateio Global
+  const [globalAlimentacao, setGlobalAlimentacao] = useState("");
+  const [globalTransporte, setGlobalTransporte] = useState("");
+
   // Firebase
   const auth = useAuth();
   const db = useFirestore();
@@ -71,6 +76,10 @@ export default function DespesasPage() {
     if (!allSchools) return [];
     return allSchools.filter((s: any) => String(s.tp_dependencia) === '3');
   }, [allSchools]);
+
+  const totalMatriculasRede = useMemo(() => {
+    return schools.reduce((acc: number, s: any) => acc + (s.total_matriculas || 0), 0);
+  }, [schools]);
 
   // Estado para armazenar despesas (lançamentos temporários da sessão)
   const [expenses, setExpenses] = useState<SchoolExpenseEntry[]>([]);
@@ -182,6 +191,36 @@ export default function DespesasPage() {
     } finally {
       setIsDeleting(false);
     }
+  };
+
+  const handleApplyRateio = (category: string, totalStr: string) => {
+    const totalValue = parseFloat(totalStr.replace(/\./g, '').replace(',', '.')) || 0;
+    
+    if (totalValue <= 0) {
+      toast({ title: "Valor inválido", description: "Informe um valor total para realizar o rateio.", variant: "destructive" });
+      return;
+    }
+
+    if (totalMatriculasRede === 0) {
+      toast({ title: "Sem matrículas", description: "Não há matrículas na rede para basear o rateio.", variant: "destructive" });
+      return;
+    }
+
+    const newEntries = schools.map((school: any) => ({
+      schoolId: school.id,
+      category: category,
+      value: (totalValue * (school.total_matriculas || 0)) / totalMatriculasRede
+    }));
+
+    setExpenses(prev => {
+      const filtered = prev.filter(e => e.category !== category);
+      return [...filtered, ...newEntries];
+    });
+
+    toast({ 
+      title: "Rateio Aplicado", 
+      description: `O valor de R$ ${totalValue.toLocaleString('pt-BR')} foi distribuído entre ${schools.length} escolas.` 
+    });
   };
 
   const handleDownloadTemplate = () => {
@@ -455,97 +494,149 @@ export default function DespesasPage() {
               </Card>
             </div>
 
-            <Card className="border-none shadow-md">
-              <CardHeader className="flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle className="text-lg">Mapa de Gastos: Rede Municipal</CardTitle>
-                  <CardDescription>Gerenciamento permanente do banco de dados</CardDescription>
-                </div>
-                <div className="flex gap-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="text-muted-foreground gap-2"
-                    onClick={() => setExpenses([])}
-                  >
-                    Limpar Sessão
-                  </Button>
-
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="text-destructive border-destructive hover:bg-destructive/10 gap-2"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Apagar Tudo do Banco
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <Card className="lg:col-span-1 shadow-md border-accent/20">
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Share2 className="h-5 w-5 text-accent" />
+                    Rateio Municipal (Global)
+                  </CardTitle>
+                  <CardDescription>Distribuir custos centralizados proporcionalmente às matrículas.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="space-y-2">
+                    <Label className="text-xs uppercase font-bold text-muted-foreground">Alimentação Escolar (Total)</Label>
+                    <div className="flex gap-2">
+                      <Input 
+                        placeholder="R$ 0,00" 
+                        value={globalAlimentacao} 
+                        onChange={e => setGlobalAlimentacao(e.target.value)}
+                        className="font-mono"
+                      />
+                      <Button size="icon" variant="outline" onClick={() => handleApplyRateio("Alimentação Escolar", globalAlimentacao)}>
+                        <Calculator className="h-4 w-4" />
                       </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Você tem certeza absoluta?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Esta ação excluirá permanentemente **TODOS os registros de despesas** do município de {profile?.municipio} no banco de dados. 
-                          Esta operação não pode ser desfeita.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction 
-                          onClick={handleDeleteAllFromFirestore}
-                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                        >
-                          Sim, Apagar Tudo
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
+                    </div>
+                  </div>
 
-                  <Button 
-                    size="sm" 
-                    className="gap-2 bg-green-700 hover:bg-green-800" 
-                    onClick={handleSave} 
-                    disabled={isSaving || expenses.length === 0}
-                  >
-                    {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    Salvar Sessão no Banco
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="border rounded-xl overflow-hidden">
-                  <ScrollArea className="h-[400px]">
-                    <Table>
-                      <TableHeader className="bg-muted/80 sticky top-0 z-10 backdrop-blur-sm">
-                        <TableRow>
-                          <TableHead>Escola</TableHead>
-                          <TableHead>INEP</TableHead>
-                          <TableHead className="text-right">Matrículas</TableHead>
-                          <TableHead className="text-right">ETI %</TableHead>
-                          <TableHead className="text-right">Custo Anual (R$)</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {schools.map((school: any) => (
-                          <TableRow key={school.id}>
-                            <TableCell className="font-medium">{school.nome}</TableCell>
-                            <TableCell className="font-mono text-xs">{school.codigo_inep}</TableCell>
-                            <TableCell className="text-right">{school.total_matriculas}</TableCell>
-                            <TableCell className="text-right">
-                              <Badge variant="outline">{school.percentual_eti}%</Badge>
-                            </TableCell>
-                            <TableCell className="text-right font-bold text-primary">
-                              R$ {(schoolExpensesSum[school.id] || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                            </TableCell>
+                  <div className="space-y-2">
+                    <Label className="text-xs uppercase font-bold text-muted-foreground">Transporte (Total)</Label>
+                    <div className="flex gap-2">
+                      <Input 
+                        placeholder="R$ 0,00" 
+                        value={globalTransporte} 
+                        onChange={e => setGlobalTransporte(e.target.value)}
+                        className="font-mono"
+                      />
+                      <Button size="icon" variant="outline" onClick={() => handleApplyRateio("Transporte", globalTransporte)}>
+                        <Calculator className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-muted/50 rounded-xl border space-y-2">
+                    <div className="flex items-center gap-2 text-primary font-bold text-[10px] uppercase">
+                      <Info className="h-3 w-3" /> Regra de Rateio
+                    </div>
+                    <p className="text-[10px] text-muted-foreground leading-tight">
+                      O sistema calcula o valor por aluno (Total ÷ Matrículas da Rede) e multiplica pelo número de alunos de cada escola municipal.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="lg:col-span-2 border-none shadow-md">
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle className="text-lg">Mapa de Gastos: Rede Municipal</CardTitle>
+                    <CardDescription>Gerenciamento permanente do banco de dados</CardDescription>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="text-muted-foreground gap-2"
+                      onClick={() => setExpenses([])}
+                    >
+                      Limpar Sessão
+                    </Button>
+
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="text-destructive border-destructive hover:bg-destructive/10 gap-2"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Apagar Tudo do Banco
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Você tem certeza absoluta?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Esta ação excluirá permanentemente **TODOS os registros de despesas** do município de {profile?.municipio} no banco de dados. 
+                            Esta operação não pode ser desfeita.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction 
+                            onClick={handleDeleteAllFromFirestore}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          >
+                            Sim, Apagar Tudo
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+
+                    <Button 
+                      size="sm" 
+                      className="gap-2 bg-green-700 hover:bg-green-800" 
+                      onClick={handleSave} 
+                      disabled={isSaving || expenses.length === 0}
+                    >
+                      {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                      Salvar Sessão no Banco
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="border rounded-xl overflow-hidden">
+                    <ScrollArea className="h-[400px]">
+                      <Table>
+                        <TableHeader className="bg-muted/80 sticky top-0 z-10 backdrop-blur-sm">
+                          <TableRow>
+                            <TableHead>Escola</TableHead>
+                            <TableHead>INEP</TableHead>
+                            <TableHead className="text-right">Matrículas</TableHead>
+                            <TableHead className="text-right">ETI %</TableHead>
+                            <TableHead className="text-right">Custo Anual (R$)</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </ScrollArea>
-                </div>
-              </CardContent>
-            </Card>
+                        </TableHeader>
+                        <TableBody>
+                          {schools.map((school: any) => (
+                            <TableRow key={school.id}>
+                              <TableCell className="font-medium">{school.nome}</TableCell>
+                              <TableCell className="font-mono text-xs">{school.codigo_inep}</TableCell>
+                              <TableCell className="text-right">{school.total_matriculas}</TableCell>
+                              <TableCell className="text-right">
+                                <Badge variant="outline">{school.percentual_eti}%</Badge>
+                              </TableCell>
+                              <TableCell className="text-right font-bold text-primary">
+                                R$ {(schoolExpensesSum[school.id] || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </ScrollArea>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </TabsContent>
       </Tabs>
