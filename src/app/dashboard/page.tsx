@@ -1,7 +1,6 @@
-
 "use client"
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { KPICard } from "@/components/dashboard/kpi-card";
 import { Users, GraduationCap, DollarSign, AlertCircle, TrendingUp, Sparkles, FileText, Download, Loader2, Filter, Layers } from "lucide-react";
 import { DEFAULT_PARAMETERS } from "@/lib/constants";
@@ -29,8 +28,12 @@ export default function DashboardPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [report, setReport] = useState<string | null>(null);
   const [filterLocalizacao, setFilterLocalizacao] = useState<string>("todas");
-  // Dashboard principal agora trava em Municipal por padrão
   const [filterDependencia, setFilterDependencia] = useState<string>("3");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const auth = useAuth();
   const db = useFirestore();
@@ -50,11 +53,9 @@ export default function DashboardPage() {
   const { analysis, stats } = useMemo(() => {
     if (!schools || schools.length === 0) return { analysis: [], stats: null };
 
-    // FILTRO CENTRAL: Apenas rede municipal para métricas financeiras de rede
     const municipalSchools = schools.filter(s => String(s.tp_dependencia) === '3');
     const totalMatriculasMunicipal = municipalSchools.reduce((acc, s: any) => acc + (s.total_matriculas || 0), 0);
 
-    // Filtro da Visualização (Pode ser alterado pelo usuário para ver outras redes, mas as métricas de VAAF/PNAE em redes não-municipais são aproximadas)
     const filteredSchools = schools.filter(s => {
       const matchesLocalizacao = filterLocalizacao === "todas" ? true : String(s.localizacao).toLowerCase() === filterLocalizacao.toLowerCase();
       const matchesDependencia = filterDependencia === "todas" ? true : String(s.tp_dependencia).trim() === filterDependencia;
@@ -62,20 +63,15 @@ export default function DashboardPage() {
     });
 
     const schoolAnalyses = filteredSchools.map((school: any) => {
-      const schoolMatriculas = school.matriculas || {
-        creche_integral: 0, creche_parcial: 0, creche_conveniada_int: 0, creche_conveniada_par: 0,
-        pre_integral: 0, pre_parcial: 0, ef_ai_integral: 0, ef_ai_parcial: 0, ef_af_integral: 0, ef_af_parcial: 0,
-        eja_fundamental: 0, eja_medio: 0, especial_aee: 0, indigena_quilombola: 0, campo_rural: 0
-      };
-
-      const vaaf = calcularVAAF(schoolMatriculas, parametros);
+      const m = school.matriculas || {};
+      const vaaf = calcularVAAF(m, parametros);
       const vaat = calcularVAAT(school, parametros, totalMatriculasMunicipal);
-      const pnae = calcularPNAE(schoolMatriculas, parametros);
+      const pnae = calcularPNAE(m, parametros);
       const mde = calcularMDE(school, parametros, totalMatriculasMunicipal);
       const outros = calcularOutros(school, parametros, totalMatriculasMunicipal);
       
       const receitaTotal = vaaf + vaat + pnae + mde + outros;
-      const despesaTotal = school.total_despesa || (receitaTotal * 0.95); // Estimativa de custo baseada na receita caso não haja despesa lançada
+      const despesaTotal = school.total_despesa || (receitaTotal * 0.95);
       const saldo = receitaTotal - despesaTotal;
       const cobertura = despesaTotal > 0 ? receitaTotal / despesaTotal : 1;
       const custoAluno = (school.total_matriculas || 0) > 0 ? despesaTotal / school.total_matriculas : 0;
@@ -97,11 +93,9 @@ export default function DashboardPage() {
       };
     });
 
-    // MÉTRICAS DA REDE MUNICIPAL (Sempre municipal para consistência de financiamento)
     const totalMatriculasRede = municipalSchools.reduce((acc, s: any) => acc + (s.total_matriculas || 0), 0);
     const totalETIRede = municipalSchools.reduce((acc, s: any) => acc + (s.total_eti || 0), 0);
     
-    // Calcula métricas para as escolas visíveis no filtro
     const currentTotalSaldo = schoolAnalyses.reduce((acc, s) => acc + s.saldo, 0);
     const currentDeficitCount = schoolAnalyses.filter(s => s.status === 'deficit').length;
     const currentAvgCusto = schoolAnalyses.length > 0 ? schoolAnalyses.reduce((acc, s) => acc + s.custoAluno, 0) / schoolAnalyses.length : 0;
@@ -165,6 +159,9 @@ export default function DashboardPage() {
     }
   };
 
+  const formatVal = (v: number) => mounted ? v.toLocaleString('pt-BR') : "0";
+  const formatCur = (v: number) => mounted ? v.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) : "0";
+
   if (profileLoading || schoolsLoading) {
     return (
       <div className="h-[60vh] flex flex-col items-center justify-center gap-4">
@@ -225,7 +222,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard 
           title="Matrículas Municipais" 
-          value={stats?.totalMatriculasRede.toLocaleString() || "0"} 
+          value={formatVal(stats?.totalMatriculasRede || 0)} 
           icon={Users}
           subtitle="Rede direta da prefeitura"
         />
@@ -282,8 +279,8 @@ export default function DashboardPage() {
                           <span>{DEPENDENCIA_LABELS[String(school.tp_dependencia)] || "N/A"}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-right text-xs">R$ {school.receitaAluno.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
-                      <TableCell className="text-right text-xs">R$ {school.custoAluno.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                      <TableCell className="text-right text-xs">R$ {formatCur(school.receitaAluno)}</TableCell>
+                      <TableCell className="text-right text-xs">R$ {formatCur(school.custoAluno)}</TableCell>
                       <TableCell className="text-right text-xs font-bold">{school.percentual_eti || 0}%</TableCell>
                       <TableCell>
                         <Badge variant={school.status === 'superavit' ? 'default' : school.status === 'deficit' ? 'destructive' : 'secondary'} className={school.status === 'superavit' ? 'bg-green-600' : ''}>
