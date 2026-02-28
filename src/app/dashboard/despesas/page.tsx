@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useRef, useMemo, useEffect } from "react";
@@ -392,7 +391,7 @@ export default function DespesasPage() {
                               variant="ghost" 
                               size="icon" 
                               className="text-muted-foreground hover:text-destructive h-8 w-8"
-                              onClick={() => setExpenses(prev => prev.filter(e => !(e.schoolId === selectedSchool && e.category === cat)))}
+                              onClick={() => setExpenses(prev => prev.filter(e => !(e.schoolId === selectedSchool && e.category === category)))}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -467,9 +466,20 @@ export default function DespesasPage() {
             </div>
 
             <Card className="border-none shadow-md">
-              <CardHeader>
-                <CardTitle className="text-lg">Mapa de Gastos: Rede Municipal</CardTitle>
-                <CardDescription>Visão comparativa exclusiva para a rede própria do município</CardDescription>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg">Mapa de Gastos: Rede Municipal</CardTitle>
+                  <CardDescription>Visão comparativa exclusiva para a rede própria do município</CardDescription>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="text-destructive border-destructive hover:bg-destructive/10 gap-2"
+                  onClick={() => setExpenses([])}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Limpar Todos os Dados
+                </Button>
               </CardHeader>
               <CardContent>
                 <div className="border rounded-xl overflow-hidden">
