@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useMemo, useEffect } from "react";
@@ -178,30 +177,43 @@ export default function SimuladorETIPage() {
             </div>
 
             <div className="space-y-4">
-              <div className="flex justify-between">
+              <div className="flex justify-between items-center">
                 <Label>Novas Matrículas ETI</Label>
-                <span className="text-sm font-bold text-primary">{novasMatriculasETI} alunos</span>
+                <Input 
+                  type="number"
+                  className="w-20 h-8 text-right font-bold"
+                  value={novasMatriculasETI}
+                  onChange={(e) => setNovasMatriculasETI(Number(e.target.value))}
+                />
               </div>
               <Slider 
                 value={[novasMatriculasETI]} 
                 onValueChange={(v) => setNovasMatriculasETI(v[0])} 
-                max={100} 
-                step={5} 
+                max={Math.max(100, novasMatriculasETI + 50)} 
+                step={1} 
               />
               <p className="text-[10px] text-muted-foreground leading-relaxed">Considerando a conversão de vagas parciais municipais para tempo integral.</p>
             </div>
 
             <div className="space-y-4 pt-4 border-t">
-              <div className="flex justify-between">
+              <div className="flex justify-between items-center">
                 <Label>Custo Extra Estimado / Aluno</Label>
-                <span className="text-sm font-bold text-orange-600">R$ {custoExtraEstimado}</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-muted-foreground">R$</span>
+                  <Input 
+                    type="number"
+                    className="w-24 h-8 text-right font-bold text-orange-600"
+                    value={custoExtraEstimado}
+                    onChange={(e) => setCustoExtraEstimado(Number(e.target.value))}
+                  />
+                </div>
               </div>
               <Slider 
                 value={[custoExtraEstimado]} 
                 onValueChange={(v) => setCustoExtraEstimado(v[0])} 
-                min={2000}
-                max={8000} 
-                step={100} 
+                min={500}
+                max={15000} 
+                step={50} 
               />
             </div>
 
