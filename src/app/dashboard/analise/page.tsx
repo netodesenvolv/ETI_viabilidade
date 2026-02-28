@@ -230,7 +230,7 @@ export default function AnaliseCustoAlunoPage() {
              <div className="p-3 bg-muted/50 rounded-xl space-y-2 border">
                 <div className="flex items-center gap-2">
                   <div className="h-2 w-2 rounded-full bg-green-500" />
-                  <p className="text-xs font-bold text-primary uppercase">Superávit (>105%)</p>
+                  <p className="text-xs font-bold text-primary uppercase">Superávit ({'>'}105%)</p>
                 </div>
                 <p className="text-[10px] text-muted-foreground leading-relaxed">
                    A unidade gera receita excedente ao custo operacional, permitindo investimentos em infraestrutura e bônus pedagógicos.
@@ -248,7 +248,7 @@ export default function AnaliseCustoAlunoPage() {
              <div className="p-3 bg-muted/50 rounded-xl space-y-2 border">
                 <div className="flex items-center gap-2">
                   <div className="h-2 w-2 rounded-full bg-destructive" />
-                  <p className="text-xs font-bold text-destructive uppercase">Déficit (<95%)</p>
+                  <p className="text-xs font-bold text-destructive uppercase">Déficit ({'<'}95%)</p>
                 </div>
                 <p className="text-[10px] text-muted-foreground leading-relaxed">
                    O custo por aluno excede os repasses. Requer revisão imediata da matriz de gastos ou expansão de matrículas integrais para elevar o VAAf.
