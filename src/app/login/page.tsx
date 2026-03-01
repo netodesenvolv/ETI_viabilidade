@@ -21,7 +21,6 @@ export default function LoginPage() {
   const [seeding, setSeeding] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
-  // Parâmetros para criação rápida de ambiente de teste
   const [targetCity, setTargetCity] = useState("Teixeira de Freitas")
   const [targetIbge, setTargetIbge] = useState("2932705")
   
@@ -32,7 +31,7 @@ export default function LoginPage() {
   const db = useFirestore()
   const { user, loading: authLoading } = useUser(auth)
 
-  // Se já estiver logado, redireciona para o dashboard
+  // Redirecionamento automático se já estiver logado
   useEffect(() => {
     if (!authLoading && user) {
       router.replace('/dashboard')
@@ -44,7 +43,6 @@ export default function LoginPage() {
     const userRef = doc(db, "users", uid);
     const userSnap = await getDoc(userRef);
 
-    // Se o usuário não tiver perfil, cria um perfil padrão (útil para o primeiro acesso)
     if (!userSnap.exists()) {
       await setDoc(userRef, {
         name: userEmail.split('@')[0],
@@ -62,25 +60,21 @@ export default function LoginPage() {
     e.preventDefault()
     setError(null)
     
-    if (!auth) {
-      toast({ title: "Erro de Conexão", description: "O serviço de autenticação não está pronto.", variant: "destructive" });
-      return;
-    }
+    if (!auth) return;
 
     setLoading(true)
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password)
       await ensureUserProfile(userCredential.user.uid, userCredential.user.email!)
-      toast({ title: "Acesso Autorizado", description: "Bem-vindo à plataforma EduFin Insights." })
-      router.push("/dashboard")
+      toast({ title: "Acesso Autorizado", description: "Sessão iniciada com sucesso." })
+      // O useEffect acima cuidará do redirecionamento de forma estável
     } catch (error: any) {
-      console.error(error);
-      let message = "E-mail ou senha incorretos."
-      if (error.code === 'auth/user-not-found') message = "Usuário não cadastrado."
+      let message = "Credenciais inválidas. Verifique seu e-mail e senha."
+      if (error.code === 'auth/user-not-found') message = "Usuário não encontrado."
       if (error.code === 'auth/wrong-password') message = "Senha incorreta."
       
       setError(message)
-      toast({ title: "Falha na Autenticação", description: message, variant: "destructive" })
+      toast({ title: "Falha no Login", description: message, variant: "destructive" })
     } finally {
       setLoading(false)
     }
@@ -94,27 +88,26 @@ export default function LoginPage() {
     const adminPass = "paix2018+"
 
     try {
-      // Tenta criar o usuário de teste
       const userCredential = await createUserWithEmailAndPassword(auth, adminEmail, adminPass)
       await ensureUserProfile(userCredential.user.uid, userCredential.user.email!);
-      toast({ title: "Admin Criado", description: "Ambiente de teste configurado com sucesso." });
+      toast({ title: "Ambiente Preparado", description: "Clique em Acessar Sistema para entrar." });
       setEmail(adminEmail); setPassword(adminPass);
     } catch (error: any) {
-      // Se o usuário já existe, apenas preenche os campos para login
       if (error.code === 'auth/email-already-in-use') {
         setEmail(adminEmail); setPassword(adminPass);
-        toast({ title: "Credenciais de Teste", description: "Campos preenchidos. Clique em Acessar Sistema." });
+        toast({ title: "Ambiente Pronto", description: "Credenciais de teste preenchidas." });
       } else {
-        toast({ title: "Erro", description: error.message, variant: "destructive" });
+        toast({ title: "Erro no Seed", description: error.message, variant: "destructive" });
       }
     } finally {
       setSeeding(false)
     }
   }
 
-  if (authLoading) {
+  // Enquanto verifica a sessão inicial, evita renderizar o formulário para não causar flicker
+  if (authLoading && !user) {
     return (
-      <div className="h-screen w-full flex flex-col items-center justify-center gap-4 bg-background">
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary opacity-20" />
       </div>
     )
@@ -155,6 +148,7 @@ export default function LoginPage() {
                   value={email} 
                   onChange={(e) => setEmail(e.target.value)} 
                   required 
+                  autoComplete="email"
                 />
               </div>
             </div>
@@ -169,6 +163,7 @@ export default function LoginPage() {
                   value={password} 
                   onChange={(e) => setPassword(e.target.value)} 
                   required 
+                  autoComplete="current-password"
                 />
               </div>
             </div>

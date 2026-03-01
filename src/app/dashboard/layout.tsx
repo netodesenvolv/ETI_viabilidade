@@ -19,13 +19,13 @@ export default function DashboardLayout({
   const router = useRouter();
 
   useEffect(() => {
-    // Redireciona para login apenas quando o carregamento terminar e o usuário for nulo
+    // Redirecionamento centralizado: se não estiver carregando e não houver usuário, vai para login
     if (!loading && !user) {
       router.replace('/login');
     }
   }, [user, loading, router]);
 
-  // Enquanto carrega o estado de autenticação, mostra um spinner centralizado
+  // Enquanto o Firebase verifica a sessão, exibe o spinner de proteção
   if (loading) {
     return (
       <div className="h-screen w-full flex flex-col items-center justify-center gap-4 bg-background">
@@ -35,7 +35,7 @@ export default function DashboardLayout({
     );
   }
 
-  // Se não houver usuário após o carregamento, não renderiza nada (o useEffect cuidará do redirect)
+  // Se não houver usuário, não renderiza o conteúdo para evitar vazamento de dados antes do redirect
   if (!user) {
     return null;
   }
