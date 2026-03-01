@@ -3,65 +3,34 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { GraduationCap, Loader2, Lock, Mail, ShieldCheck, AlertCircle } from "lucide-react"
+import { GraduationCap, Loader2, Lock, Mail, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth"
-import { useAuth, useFirestore, useUser } from "@/firebase"
-import { doc, setDoc, getDoc } from "firebase/firestore"
+import { signInWithEmailAndPassword } from "firebase/auth"
+import { useAuth, useUser } from "@/firebase"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
-  const [seeding, setSeeding] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  
-  // Parâmetros para a Homologação do Administrador Geral
-  const [targetCity, setTargetCity] = useState("Teixeira de Freitas")
-  const [targetIbge, setTargetIbge] = useState("2932705")
   
   const router = useRouter()
   const { toast } = useToast()
   
   const auth = useAuth()
-  const db = useFirestore()
   const { user, loading: authLoading } = useUser(auth)
 
-  // Redirecionamento estável: monitora o usuário e o loading
+  // Redirecionamento automático se já estiver logado
   useEffect(() => {
     if (!authLoading && user) {
       router.replace('/dashboard')
     }
   }, [user, authLoading, router])
-
-  const ensureUserProfile = async (uid: string, userEmail: string, isInitialAdmin = false) => {
-    if (!db) return;
-    try {
-      const userRef = doc(db, "users", uid);
-      const userSnap = await getDoc(userRef);
-
-      // Se o usuário não existe, cria um perfil. 
-      // Se for o seed do admin, já vincula ao município alvo da homologação.
-      if (!userSnap.exists()) {
-        await setDoc(userRef, {
-          name: userEmail.split('@')[0],
-          email: userEmail,
-          role: isInitialAdmin ? "Admin" : "Leitor",
-          municipio: isInitialAdmin ? targetCity : "Aguardando Vínculo",
-          municipioId: isInitialAdmin ? targetIbge : "",
-          status: "Ativo",
-          createdAt: new Date().toISOString()
-        });
-      }
-    } catch (e) {
-      console.error("Erro ao garantir perfil:", e);
-    }
-  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -71,9 +40,7 @@ export default function LoginPage() {
     setLoading(true)
     
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password)
-      // Garante que o perfil exista ao logar
-      await ensureUserProfile(userCredential.user.uid, userCredential.user.email!)
+      await signInWithEmailAndPassword(auth, email, password)
       toast({ title: "Bem-vindo", description: "Acesso autorizado com sucesso." })
     } catch (error: any) {
       let message = "E-mail ou senha incorretos."
@@ -88,41 +55,7 @@ export default function LoginPage() {
     }
   }
 
-  const handleSeedAdmin = async () => {
-    if (!auth || !db || seeding) return;
-    setSeeding(true)
-    setError(null)
-    
-    // Credenciais do Administrador Geral para Homologação
-    const adminEmail = "castroalvesneto@gmail.com"
-    const adminPass = "paix2018+"
-
-    try {
-      // Tenta criar o usuário administrador geral
-      const userCredential = await createUserWithEmailAndPassword(auth, adminEmail, adminPass)
-      await ensureUserProfile(userCredential.user.uid, userCredential.user.email!, true);
-      
-      setEmail(adminEmail); 
-      setPassword(adminPass);
-      
-      toast({ 
-        title: "Homologação Concluída", 
-        description: "Administrador Geral criado e vinculado ao município alvo." 
-      });
-    } catch (error: any) {
-      if (error.code === 'auth/email-already-in-use') {
-        setEmail(adminEmail); 
-        setPassword(adminPass);
-        toast({ title: "Credenciais Preenchidas", description: "O Administrador Geral já possui cadastro." });
-      } else {
-        toast({ title: "Erro", description: error.message, variant: "destructive" });
-      }
-    } finally {
-      setSeeding(false)
-    }
-  }
-
-  // Enquanto verifica a sessão, exibe apenas o loader
+  // Enquanto verifica a sessão inicial
   if (authLoading) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-background">
@@ -131,7 +64,7 @@ export default function LoginPage() {
     )
   }
 
-  // Se já houver usuário, não renderiza o form para evitar loops visuais
+  // Se já houver usuário, não renderiza o form para evitar flashes visuais
   if (user) return null;
 
   return (
@@ -188,46 +121,14 @@ export default function LoginPage() {
             </div>
           </CardContent>
           <CardFooter className="flex flex-col gap-4 pb-8">
-            <Button type="submit" className="w-full h-11 font-bold text-lg" disabled={loading || seeding}>
+            <Button type="submit" className="w-full h-11 font-bold text-lg" disabled={loading}>
               {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : "Acessar Sistema"}
-            </Button>
-            
-            <div className="w-full relative py-4">
-              <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
-              <div className="relative flex justify-center text-[10px] uppercase font-bold tracking-tighter">
-                <span className="bg-white px-3 text-muted-foreground">Homologação de Administrador</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 w-full mb-2">
-              <div className="space-y-1">
-                <Label className="text-[10px] text-muted-foreground uppercase font-bold">Cidado Alvo</Label>
-                <Input className="h-8 text-xs font-medium" value={targetCity} onChange={e => setTargetCity(e.target.value)} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-[10px] text-muted-foreground uppercase font-bold">Cód. IBGE</Label>
-                <Input className="h-8 text-xs font-mono" value={targetIbge} onChange={e => setTargetIbge(e.target.value)} />
-              </div>
-            </div>
-
-            <Button 
-              type="button" 
-              variant="outline" 
-              className="w-full gap-3 border-dashed h-14 bg-muted/50 hover:bg-muted" 
-              onClick={handleSeedAdmin} 
-              disabled={loading || seeding}
-            >
-              {seeding ? <Loader2 className="h-5 w-5 animate-spin" /> : <ShieldCheck className="h-5 w-5 text-primary/60" />}
-              <div className="text-left">
-                <p className="text-xs font-bold leading-none text-slate-800">Seed de Administrador Geral</p>
-                <p className="text-[10px] text-muted-foreground mt-1">Vincula o e-mail mestre à prefeitura alvo</p>
-              </div>
             </Button>
           </CardFooter>
         </form>
       </Card>
       <p className="mt-8 text-center text-xs text-muted-foreground">
-        © 2026 EduFin Insights • Homologação Exclusiva para Administradores
+        © 2026 EduFin Insights • Sistema de Gestão Estratégica
       </p>
     </div>
   )
