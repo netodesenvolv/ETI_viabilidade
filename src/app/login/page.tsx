@@ -3,24 +3,21 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { GraduationCap, Loader2, Lock, Mail, ShieldCheck, UserCheck, AlertTriangle } from "lucide-react"
+import { GraduationCap, Loader2, Lock, Mail, ShieldCheck, UserCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged } from "firebase/auth"
-import { useAuth, useFirestore } from "@/firebase"
+import { useAuth, useFirestore, useUser } from "@/firebase"
 import { doc, setDoc, getDoc } from "firebase/firestore"
-import { firebaseConfig } from "@/firebase/config"
-import Link from "next/link"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [seeding, setSeeding] = useState(false)
-  const [isLogged, setIsLogged] = useState(false)
   const [targetCity, setTargetCity] = useState("Teixeira de Freitas")
   const [targetIbge, setTargetIbge] = useState("2932705")
   const router = useRouter()
@@ -28,13 +25,13 @@ export default function LoginPage() {
   
   const auth = useAuth()
   const db = useFirestore()
+  const { user, loading: authLoading } = useUser(auth)
 
   useEffect(() => {
-    if (!auth) return;
-    return onAuthStateChanged(auth, (user) => {
-      setIsLogged(!!user);
-    });
-  }, [auth]);
+    if (!authLoading && user) {
+      router.replace('/dashboard')
+    }
+  }, [user, authLoading, router])
 
   const ensureUserProfile = async (uid: string, userEmail: string) => {
     if (!db) return;
@@ -42,7 +39,6 @@ export default function LoginPage() {
     const userSnap = await getDoc(userRef);
 
     if (!userSnap.exists()) {
-      console.log("Perfil não encontrado, criando vínculo municipal...");
       await setDoc(userRef, {
         name: userEmail.split('@')[0],
         email: userEmail,
@@ -67,17 +63,16 @@ export default function LoginPage() {
     setLoading(true)
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password)
-      const created = await ensureUserProfile(userCredential.user.uid, userCredential.user.email!)
-      
+      await ensureUserProfile(userCredential.user.uid, userCredential.user.email!)
       toast({
         title: "Sucesso",
-        description: created ? `Bem-vindo! Perfil vinculado a ${targetCity}.` : "Acesso liberado.",
+        description: "Acesso liberado.",
       })
       router.push("/dashboard")
     } catch (error: any) {
       toast({
         title: "Erro no login",
-        description: "E-mail ou senha inválidos. Certifique-se de habilitar o login por senha no Firebase.",
+        description: "E-mail ou senha inválidos.",
         variant: "destructive",
       })
     } finally {
@@ -86,37 +81,33 @@ export default function LoginPage() {
   }
 
   const handleSeedAdmin = async () => {
-    if (!auth || !db) {
-      toast({ title: "Erro", description: "Firebase não inicializado.", variant: "destructive" });
-      return;
-    }
-
+    if (!auth || !db) return;
     setSeeding(true)
     const adminEmail = "castroalvesneto@gmail.com"
     const adminPass = "paix2018+"
 
     try {
-      if (isLogged && auth.currentUser) {
-        // Apenas repara o perfil se já estiver logado
-        await ensureUserProfile(auth.currentUser.uid, auth.currentUser.email!);
-        toast({ title: "Perfil Reparado", description: `Vínculo com ${targetCity} estabelecido.` });
-        router.push("/dashboard");
-      } else {
-        const userCredential = await createUserWithEmailAndPassword(auth, adminEmail, adminPass)
-        await ensureUserProfile(userCredential.user.uid, userCredential.user.email!);
-        toast({ title: "Admin Criado", description: `Usuário ${adminEmail} configurado para ${targetCity}.` });
-        setEmail(adminEmail); setPassword(adminPass);
-      }
+      const userCredential = await createUserWithEmailAndPassword(auth, adminEmail, adminPass)
+      await ensureUserProfile(userCredential.user.uid, userCredential.user.email!);
+      toast({ title: "Admin Criado", description: `Usuário ${adminEmail} configurado.` });
+      setEmail(adminEmail); setPassword(adminPass);
     } catch (error: any) {
       if (error.code === 'auth/email-already-in-use') {
-        toast({ title: "Atenção", description: "Este e-mail já existe. Tente logar normalmente." });
         setEmail(adminEmail); setPassword(adminPass);
       } else {
-        toast({ title: "Erro no Auth", description: error.message, variant: "destructive" });
+        toast({ title: "Erro", description: error.message, variant: "destructive" });
       }
     } finally {
       setSeeding(false)
     }
+  }
+
+  if (authLoading) {
+    return (
+      <div className="h-screen w-full flex flex-col items-center justify-center gap-4 bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary opacity-20" />
+      </div>
+    )
   }
 
   return (
@@ -155,12 +146,12 @@ export default function LoginPage() {
             
             <div className="w-full relative py-2">
               <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
-              <div className="relative flex justify-center text-xs uppercase"><span className="bg-background px-2 text-muted-foreground">Vínculo Municipal Manual</span></div>
+              <div className="relative flex justify-center text-xs uppercase"><span className="bg-background px-2 text-muted-foreground">Vínculo Municipal</span></div>
             </div>
 
             <div className="grid grid-cols-2 gap-2 w-full mb-2">
               <div className="space-y-1">
-                <Label className="text-[10px]">Nome da Cidade</Label>
+                <Label className="text-[10px]">Cidade Alvo</Label>
                 <Input className="h-7 text-xs" value={targetCity} onChange={e => setTargetCity(e.target.value)} />
               </div>
               <div className="space-y-1">
@@ -170,16 +161,15 @@ export default function LoginPage() {
             </div>
 
             <Button type="button" variant="outline" className="w-full gap-2 border-dashed h-12" onClick={handleSeedAdmin} disabled={loading || seeding}>
-              {seeding ? <Loader2 className="h-4 w-4 animate-spin" /> : isLogged ? <UserCheck className="h-4 w-4 text-green-600" /> : <ShieldCheck className="h-4 w-4" />}
+              {seeding ? <Loader2 className="h-4 w-4 animate-spin" /> : user ? <UserCheck className="h-4 w-4 text-green-600" /> : <ShieldCheck className="h-4 w-4" />}
               <div className="text-left">
-                <p className="text-xs font-bold leading-none">{isLogged ? "Reparar Vínculo da Conta" : "Criar Admin & Vincular Cidade"}</p>
-                <p className="text-[10px] text-muted-foreground">Configura os metadados de acesso no Firestore</p>
+                <p className="text-xs font-bold leading-none">{user ? "Sessão Ativa" : "Criar Admin de Teste"}</p>
+                <p className="text-[10px] text-muted-foreground">Acesso rápido para homologação</p>
               </div>
             </Button>
           </CardFooter>
         </form>
       </Card>
-      {isLogged && <Button variant="link" onClick={() => router.push('/dashboard')} className="mt-4">Ir para Dashboard</Button>}
     </div>
   )
 }
