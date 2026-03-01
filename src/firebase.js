@@ -1,8 +1,9 @@
 
+'use client';
+
 /**
- * ARQUIVO DEPRECADO
- * Utilize apenas as instâncias de src/firebase/index.ts para garantir a estabilidade da sessão.
+ * Ponto de entrada unificado para o Firebase.
+ * Re-exporta todas as funcionalidades do diretório src/firebase/index.ts
+ * para garantir compatibilidade com as rotas de importação @/firebase.
  */
-import { initializeFirebase } from './firebase/index';
-const { auth, db } = initializeFirebase();
-export { auth, db };
+export * from './firebase/index';

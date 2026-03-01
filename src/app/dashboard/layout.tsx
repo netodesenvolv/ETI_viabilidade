@@ -20,8 +20,10 @@ export default function DashboardLayout({
   const [isAuthorized, setIsAuthorized] = useState(false);
 
   useEffect(() => {
+    // Só tomamos uma decisão de navegação quando o loading do Auth terminar
     if (!loading) {
       if (!user) {
+        // Redirecionamento atômico para evitar loops
         router.replace('/login');
       } else {
         setIsAuthorized(true);
@@ -29,8 +31,8 @@ export default function DashboardLayout({
     }
   }, [user, loading, router]);
 
-  // Enquanto verifica a sessão, mostra o loader centralizado
-  if (loading || (!user && !isAuthorized)) {
+  // Enquanto verifica a sessão ou se não estiver autorizado, mantém o loader
+  if (loading || !isAuthorized) {
     return (
       <div className="h-screen w-full flex flex-col items-center justify-center gap-4 bg-background">
         <Loader2 className="h-10 w-10 animate-spin text-primary opacity-20" />
@@ -38,9 +40,6 @@ export default function DashboardLayout({
       </div>
     );
   }
-
-  // Se não houver usuário após o loading, não renderiza nada para evitar flash de conteúdo
-  if (!user) return null;
 
   return (
     <SidebarProvider>
