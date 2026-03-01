@@ -110,7 +110,6 @@ export default function DashboardPage() {
       const despesaReal = schoolExpensesList.reduce((acc, e: any) => acc + (e.value || 0), 0);
       
       const despesaTotal = despesaReal;
-      
       const saldo = receitaTotal - despesaTotal;
       const cobertura = despesaTotal > 0 ? receitaTotal / despesaTotal : 1;
       const custoAluno = (school.total_matriculas || 0) > 0 ? despesaTotal / school.total_matriculas : 0;
@@ -217,7 +216,7 @@ export default function DashboardPage() {
     
     try {
       const getSum = (key: string) => analysis.reduce((acc, d: any) => acc + (d[key] || 0), 0);
-      const totalRevenue = networkTotals.total;
+      const totalRevenue = networkTotals.total || 1;
 
       const input = {
         municipio: profile?.municipio || "Município",
@@ -250,7 +249,6 @@ export default function DashboardPage() {
       setReport(result.report);
       toast({ title: "Diagnóstico Gerado", description: "A IA concluiu a análise técnica." });
     } catch (error: any) {
-      console.error(error);
       toast({
         title: "Erro na IA",
         description: `Falha na narrativa técnica: ${error.message || 'Verifique sua conexão.'}`,
@@ -275,7 +273,7 @@ export default function DashboardPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `parecer_eti_${profile?.municipio}_2026.txt`);
+    link.setAttribute("download", `parecer_eti_${profile?.municipio || 'municipio'}_2026.txt`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -351,11 +349,11 @@ export default function DashboardPage() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        <KPICard title="Matrículas Municipais" value={mounted ? stats?.totalMatriculasRede.toLocaleString('pt-BR') : "0"} icon={Users} subtitle="Rede direta" />
-        <KPICard title="Alunos em ETI" value={`${stats?.percentualETI.toFixed(1)}%`} icon={GraduationCap} subtitle={`${stats?.totalETIRede} alunos integrais`} />
-        <KPICard title="Cobertura ETI (Escolas)" value={`${stats?.percSchoolsWithEti.toFixed(1)}%`} icon={Building2} subtitle={`${stats?.schoolsWithEtiCount} de ${stats?.totalSchools} unidades`} />
-        <KPICard title="Saldo Estimado" value={`R$ ${mounted ? (stats?.totalSaldo! / 1000).toFixed(1) : "0"}k`} icon={DollarSign} subtitle={stats?.hasExpenses ? (stats?.totalSaldo! >= 0 ? "Superávit" : "Déficit") : "Aguardando Despesas"} className={stats?.hasExpenses ? (stats?.totalSaldo! >= 0 ? "bg-green-50/50 border-green-200" : "bg-red-50/50 border-red-200") : "bg-muted/30 border-dashed"} />
-        <KPICard title="Unidades em Risco" value={stats?.deficitCount || 0} icon={AlertCircle} subtitle="Cenário de déficit" className={stats?.deficitCount! > 0 ? "bg-orange-50/50 border-orange-200" : ""} />
+        <KPICard title="Matrículas Municipais" value={mounted ? (stats?.totalMatriculasRede ?? 0).toLocaleString('pt-BR') : "0"} icon={Users} subtitle="Rede direta" />
+        <KPICard title="Alunos em ETI" value={`${(stats?.percentualETI ?? 0).toFixed(1)}%`} icon={GraduationCap} subtitle={`${stats?.totalETIRede ?? 0} alunos integrais`} />
+        <KPICard title="Cobertura ETI (Escolas)" value={`${(stats?.percSchoolsWithEti ?? 0).toFixed(1)}%`} icon={Building2} subtitle={`${stats?.schoolsWithEtiCount ?? 0} de ${stats?.totalSchools ?? 0} unidades`} />
+        <KPICard title="Saldo Estimado" value={`R$ ${mounted ? ((stats?.totalSaldo ?? 0) / 1000).toFixed(1) : "0"}k`} icon={DollarSign} subtitle={stats?.hasExpenses ? ((stats?.totalSaldo ?? 0) >= 0 ? "Superávit" : "Déficit") : "Aguardando Despesas"} className={stats?.hasExpenses ? ((stats?.totalSaldo ?? 0) >= 0 ? "bg-green-50/50 border-green-200" : "bg-red-50/50 border-red-200") : "bg-muted/30 border-dashed"} />
+        <KPICard title="Unidades em Risco" value={stats?.deficitCount || 0} icon={AlertCircle} subtitle="Cenário de déficit" className={(stats?.deficitCount ?? 0) > 0 ? "bg-orange-50/50 border-orange-200" : ""} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
