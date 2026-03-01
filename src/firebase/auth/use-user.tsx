@@ -18,7 +18,7 @@ export function useUser(auth: Auth | null) {
       return;
     }
 
-    // O onAuthStateChanged é a forma mais estável de monitorar a sessão
+    // O onAuthStateChanged é a única fonte de verdade para a sessão
     const unsubscribe = onAuthStateChanged(auth, (authUser) => {
       setUser(authUser);
       setLoading(false);

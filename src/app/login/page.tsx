@@ -31,7 +31,7 @@ export default function LoginPage() {
   const db = useFirestore()
   const { user, loading: authLoading } = useUser(auth)
 
-  // Redirecionamento automático se já estiver logado
+  // Redirecionamento único e estável
   useEffect(() => {
     if (!authLoading && user) {
       router.replace('/dashboard')
@@ -40,48 +40,52 @@ export default function LoginPage() {
 
   const ensureUserProfile = async (uid: string, userEmail: string) => {
     if (!db) return;
-    const userRef = doc(db, "users", uid);
-    const userSnap = await getDoc(userRef);
+    try {
+      const userRef = doc(db, "users", uid);
+      const userSnap = await getDoc(userRef);
 
-    if (!userSnap.exists()) {
-      await setDoc(userRef, {
-        name: userEmail.split('@')[0],
-        email: userEmail,
-        role: "Admin",
-        municipio: targetCity,
-        municipioId: targetIbge,
-        status: "Ativo",
-        createdAt: new Date().toISOString()
-      }, { merge: true });
+      if (!userSnap.exists()) {
+        await setDoc(userRef, {
+          name: userEmail.split('@')[0],
+          email: userEmail,
+          role: "Admin",
+          municipio: targetCity,
+          municipioId: targetIbge,
+          status: "Ativo",
+          createdAt: new Date().toISOString()
+        });
+      }
+    } catch (e) {
+      console.error("Erro ao garantir perfil:", e);
     }
   };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError(null)
+    if (!auth || loading) return;
     
-    if (!auth) return;
-
+    setError(null)
     setLoading(true)
+    
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password)
       await ensureUserProfile(userCredential.user.uid, userCredential.user.email!)
-      toast({ title: "Acesso Autorizado", description: "Sessão iniciada com sucesso." })
-      // O useEffect acima cuidará do redirecionamento de forma estável
+      toast({ title: "Bem-vindo", description: "Acesso autorizado com sucesso." })
+      // O redirecionamento é tratado pelo useEffect para evitar loops
     } catch (error: any) {
-      let message = "Credenciais inválidas. Verifique seu e-mail e senha."
-      if (error.code === 'auth/user-not-found') message = "Usuário não encontrado."
+      let message = "E-mail ou senha incorretos."
+      if (error.code === 'auth/user-not-found') message = "Usuário não cadastrado."
       if (error.code === 'auth/wrong-password') message = "Senha incorreta."
       
       setError(message)
-      toast({ title: "Falha no Login", description: message, variant: "destructive" })
+      toast({ title: "Erro de Acesso", description: message, variant: "destructive" })
     } finally {
       setLoading(false)
     }
   }
 
   const handleSeedAdmin = async () => {
-    if (!auth || !db) return;
+    if (!auth || !db || seeding) return;
     setSeeding(true)
     setError(null)
     const adminEmail = "castroalvesneto@gmail.com"
@@ -90,28 +94,29 @@ export default function LoginPage() {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, adminEmail, adminPass)
       await ensureUserProfile(userCredential.user.uid, userCredential.user.email!);
-      toast({ title: "Ambiente Preparado", description: "Clique em Acessar Sistema para entrar." });
       setEmail(adminEmail); setPassword(adminPass);
+      toast({ title: "Ambiente Criado", description: "Utilize o botão de Acessar para entrar." });
     } catch (error: any) {
       if (error.code === 'auth/email-already-in-use') {
         setEmail(adminEmail); setPassword(adminPass);
-        toast({ title: "Ambiente Pronto", description: "Credenciais de teste preenchidas." });
+        toast({ title: "Credenciais Preenchidas", description: "O usuário já existe no sistema." });
       } else {
-        toast({ title: "Erro no Seed", description: error.message, variant: "destructive" });
+        toast({ title: "Erro", description: error.message, variant: "destructive" });
       }
     } finally {
       setSeeding(false)
     }
   }
 
-  // Enquanto verifica a sessão inicial, evita renderizar o formulário para não causar flicker
-  if (authLoading && !user) {
+  if (authLoading) {
     return (
-      <div className="h-screen w-full flex flex-col items-center justify-center bg-background">
+      <div className="h-screen w-full flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary opacity-20" />
       </div>
     )
   }
+
+  if (user) return null; // Evita renderizar form se já estiver redirecionando
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/10 via-background to-background">
@@ -148,7 +153,6 @@ export default function LoginPage() {
                   value={email} 
                   onChange={(e) => setEmail(e.target.value)} 
                   required 
-                  autoComplete="email"
                 />
               </div>
             </div>
@@ -163,13 +167,12 @@ export default function LoginPage() {
                   value={password} 
                   onChange={(e) => setPassword(e.target.value)} 
                   required 
-                  autoComplete="current-password"
                 />
               </div>
             </div>
           </CardContent>
           <CardFooter className="flex flex-col gap-4 pb-8">
-            <Button type="submit" className="w-full h-11 font-bold text-lg shadow-lg shadow-primary/20" disabled={loading || seeding}>
+            <Button type="submit" className="w-full h-11 font-bold text-lg" disabled={loading || seeding}>
               {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : "Acessar Sistema"}
             </Button>
             
@@ -198,10 +201,10 @@ export default function LoginPage() {
               onClick={handleSeedAdmin} 
               disabled={loading || seeding}
             >
-              {seeding ? <Loader2 className="h-5 w-5 animate-spin" /> : user ? <UserCheck className="h-5 w-5 text-green-600" /> : <ShieldCheck className="h-5 w-5 text-primary/60" />}
+              {seeding ? <Loader2 className="h-5 w-5 animate-spin" /> : <ShieldCheck className="h-5 w-5 text-primary/60" />}
               <div className="text-left">
-                <p className="text-xs font-bold leading-none text-slate-800">{user ? "Sessão Ativa" : "Gerar Acesso de Teste"}</p>
-                <p className="text-[10px] text-muted-foreground mt-1">Configura credenciais de admin e município</p>
+                <p className="text-xs font-bold leading-none text-slate-800">Gerar Acesso de Teste</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Configura usuário admin padrão</p>
               </div>
             </Button>
           </CardFooter>

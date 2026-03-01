@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { DashboardSidebar } from "@/components/layout/dashboard-sidebar";
@@ -17,28 +17,30 @@ export default function DashboardLayout({
   const auth = useAuth();
   const { user, loading } = useUser(auth);
   const router = useRouter();
+  const [isAuthorized, setIsAuthorized] = useState(false);
 
   useEffect(() => {
-    // Redirecionamento centralizado: se não estiver carregando e não houver usuário, vai para login
-    if (!loading && !user) {
-      router.replace('/login');
+    if (!loading) {
+      if (!user) {
+        router.replace('/login');
+      } else {
+        setIsAuthorized(true);
+      }
     }
   }, [user, loading, router]);
 
-  // Enquanto o Firebase verifica a sessão, exibe o spinner de proteção
-  if (loading) {
+  // Enquanto verifica a sessão, mostra o loader centralizado
+  if (loading || (!user && !isAuthorized)) {
     return (
       <div className="h-screen w-full flex flex-col items-center justify-center gap-4 bg-background">
         <Loader2 className="h-10 w-10 animate-spin text-primary opacity-20" />
-        <p className="text-muted-foreground animate-pulse font-headline">Validando credenciais de acesso...</p>
+        <p className="text-muted-foreground animate-pulse font-headline">Validando acesso seguro...</p>
       </div>
     );
   }
 
-  // Se não houver usuário, não renderiza o conteúdo para evitar vazamento de dados antes do redirect
-  if (!user) {
-    return null;
-  }
+  // Se não houver usuário após o loading, não renderiza nada para evitar flash de conteúdo
+  if (!user) return null;
 
   return (
     <SidebarProvider>
