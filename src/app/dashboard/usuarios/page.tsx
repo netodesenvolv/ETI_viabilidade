@@ -1,12 +1,12 @@
 
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { UserPlus, UserCog, Mail, Shield, Trash2, Search, Loader2, MapPin, Lock } from "lucide-react"
+import { UserPlus, UserCog, Mail, Shield, Trash2, Search, Loader2, MapPin, Lock, ShieldAlert } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import {
   Dialog,
@@ -26,7 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
-import { useCollection, useFirestore, useAuth } from "@/firebase"
+import { useCollection, useFirestore, useAuth, useUser, useDoc } from "@/firebase"
 import { collection, doc, setDoc, deleteDoc } from "firebase/firestore"
 import { errorEmitter } from '@/firebase/error-emitter'
 import { FirestorePermissionError } from '@/firebase/errors'
@@ -35,7 +35,12 @@ export default function UsuariosPage() {
   const { toast } = useToast()
   const db = useFirestore()
   const auth = useAuth()
-  const { data: users, loading } = useCollection(db ? collection(db, "users") : null)
+  const { user } = useUser(auth)
+  
+  const userProfileRef = useMemo(() => (db && user ? doc(db, 'users', user.uid) : null), [db, user]);
+  const { data: profile, loading: profileLoading } = useDoc(userProfileRef);
+  
+  const { data: users, loading: usersLoading } = useCollection(db ? collection(db, "users") : null)
   
   const [searchTerm, setSearchTerm] = useState("")
   const [isAdding, setIsAdding] = useState(false)
@@ -56,12 +61,10 @@ export default function UsuariosPage() {
     setIsAdding(true)
 
     try {
-      // Importações dinâmicas para gerenciar a instância secundária de criação
-      const { initializeApp, getApp, getApps } = await import('firebase/app');
+      const { initializeApp, getApps } = await import('firebase/app');
       const { getAuth, createUserWithEmailAndPassword, signOut } = await import('firebase/auth');
       const { firebaseConfig } = await import('@/firebase/config');
 
-      // Cria ou recupera uma instância secundária para não deslogar o admin atual
       let secondaryApp;
       const apps = getApps();
       const existingApp = apps.find(a => a.name === 'SecondaryCreator');
@@ -72,15 +75,10 @@ export default function UsuariosPage() {
       }
       
       const secondaryAuth = getAuth(secondaryApp);
-      
-      // 1. Cria o usuário no Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, newUser.email, newUser.password);
       const uid = userCredential.user.uid;
-      
-      // Desloga da instância secundária imediatamente para manter a segurança
       await signOut(secondaryAuth);
 
-      // 2. Cria o perfil no Firestore usando o UID do Auth
       const userRef = doc(db, "users", uid);
       const userData = {
         name: newUser.name,
@@ -104,7 +102,6 @@ export default function UsuariosPage() {
       let message = "Erro ao criar usuário."
       if (error.code === 'auth/email-already-in-use') message = "Este e-mail já está sendo usado por outro usuário."
       if (error.code === 'auth/weak-password') message = "A senha deve ter pelo menos 6 caracteres."
-      if (error.code === 'permission-denied') message = "Você não tem permissão para realizar esta operação no banco de dados."
       
       toast({
         title: "Falha no Cadastro",
@@ -126,6 +123,26 @@ export default function UsuariosPage() {
         })
         errorEmitter.emit('permission-error', permissionError)
       })
+  }
+
+  if (profileLoading) {
+    return (
+      <div className="h-[60vh] flex flex-col items-center justify-center">
+        <Loader2 className="h-10 w-10 animate-spin text-primary opacity-20" />
+      </div>
+    );
+  }
+
+  if (profile?.role !== 'Admin') {
+    return (
+      <div className="h-[60vh] flex flex-col items-center justify-center text-center p-8 space-y-4">
+        <ShieldAlert className="h-12 w-12 text-destructive/50" />
+        <h3 className="text-xl font-bold text-primary font-headline">Acesso Restrito</h3>
+        <p className="text-muted-foreground max-w-sm">
+          Apenas Administradores Gerais podem gerenciar permissões e convites de novos usuários.
+        </p>
+      </div>
+    )
   }
 
   const filteredUsers = (users || []).filter(user => 
@@ -252,15 +269,15 @@ export default function UsuariosPage() {
             <div className="p-3 border rounded-lg bg-primary/5 border-primary/10">
               <p className="text-xs font-bold mb-1">Multi-Município</p>
               <p className="text-[11px] text-muted-foreground leading-relaxed">
-                Cada usuário visualiza e edita apenas as escolas vinculadas ao seu respectivo município (vinculado pelo ID de prefeitura).
+                Cada usuário visualiza e edita apenas as escolas vinculadas ao seu respectivo município.
               </p>
             </div>
             <div className="p-3 border rounded-lg bg-muted/30">
               <div className="flex items-center gap-2 mb-1">
                 <UserCog className="h-4 w-4 text-accent" />
-                <span className="text-sm font-bold">Editor Municipal</span>
+                <span className="text-sm font-bold">Acesso Granular</span>
               </div>
-              <p className="text-[11px] text-muted-foreground">Poderá gerenciar apenas o Censo e Despesas da sua cidade.</p>
+              <p className="text-[11px] text-muted-foreground">O perfil Editor pode gerenciar o Censo e Despesas, mas não altera parâmetros estruturais.</p>
             </div>
           </CardContent>
         </Card>
@@ -281,7 +298,7 @@ export default function UsuariosPage() {
             </div>
           </CardHeader>
           <CardContent>
-            {loading ? (
+            {usersLoading ? (
               <div className="flex justify-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
             ) : (
               <Table>

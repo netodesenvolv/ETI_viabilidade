@@ -42,7 +42,7 @@ const menuItems = [
   { title: "Gestão de Despesas", icon: TrendingUp, href: "/dashboard/despesas" },
   { title: "Análise Custo-Aluno", icon: Calculator, href: "/dashboard/analise" },
   { title: "Simulador ETI", icon: GraduationCap, href: "/dashboard/simulador" },
-  { title: "Usuários", icon: Users, href: "/dashboard/usuarios" },
+  { title: "Usuários", icon: Users, href: "/dashboard/usuarios", adminOnly: true },
 ]
 
 export function DashboardSidebar() {
@@ -72,6 +72,12 @@ export function DashboardSidebar() {
     }
   };
 
+  // Filtra itens de menu baseados na role do usuário
+  const filteredMenuItems = menuItems.filter(item => {
+    if (item.adminOnly && profile?.role !== 'Admin') return false;
+    return true;
+  });
+
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="h-16 flex items-center px-6">
@@ -85,7 +91,7 @@ export function DashboardSidebar() {
       <SidebarSeparator />
       <SidebarContent>
         <SidebarMenu className="px-2 py-4">
-          {menuItems.map((item) => (
+          {filteredMenuItems.map((item) => (
             <SidebarMenuItem key={item.title}>
               <SidebarMenuButton
                 asChild
