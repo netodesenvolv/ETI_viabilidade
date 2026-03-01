@@ -8,7 +8,26 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Save, FileSpreadsheet, Plus, Trash2, Download, Upload, Loader2, Building2, Landmark, PieChart, FileText, AlertCircle, AlertTriangle, Calculator, Share2, Info } from "lucide-react";
+import { 
+  Save, 
+  FileSpreadsheet, 
+  Plus, 
+  Trash2, 
+  Download, 
+  Upload, 
+  Loader2, 
+  Building2, 
+  Landmark, 
+  PieChart, 
+  FileText, 
+  AlertCircle, 
+  AlertTriangle, 
+  Calculator, 
+  Share2, 
+  Info,
+  Eye,
+  Search
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -28,6 +47,15 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Separator } from "@/components/ui/separator";
 
 const EXPENSE_CATEGORIES = [
   "Pessoal — Docentes",
@@ -114,6 +142,7 @@ export default function DespesasPage() {
     
     try {
       const promises = expenses.map(entry => {
+        // Sanitiza a categoria para remover barras e caracteres que quebram o path do Firestore
         const sanitizedCategory = entry.category.replace(/[\s/()]+/g, '_');
         const expenseId = `${entry.schoolId}_${sanitizedCategory}_2026`;
         const expenseRef = doc(db, 'municipios', municipioId, 'expenses', expenseId);
@@ -307,6 +336,14 @@ export default function DespesasPage() {
     }, {} as Record<string, number>);
   }, [expenses]);
 
+  const networkCategoryTotals = useMemo(() => {
+    return expenses.reduce((acc, exp) => {
+      if (!acc[exp.category]) acc[exp.category] = 0;
+      acc[exp.category] += exp.value;
+      return acc;
+    }, {} as Record<string, number>);
+  }, [expenses]);
+
   const totalNetworkExpenses = useMemo(() => {
     return Object.values(schoolExpensesSum).reduce((acc, val) => acc + val, 0);
   }, [schoolExpensesSum]);
@@ -495,63 +532,95 @@ export default function DespesasPage() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <Card className="lg:col-span-1 shadow-md border-accent/20">
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Share2 className="h-5 w-5 text-accent" />
-                    Rateio Municipal (Global)
-                  </CardTitle>
-                  <CardDescription>Distribuir custos centralizados proporcionalmente às matrículas.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="space-y-2">
-                    <Label className="text-xs uppercase font-bold text-muted-foreground">Alimentação Escolar (Total)</Label>
-                    <div className="flex gap-2">
-                      <Input 
-                        placeholder="R$ 0,00" 
-                        value={globalAlimentacao} 
-                        onChange={e => setGlobalAlimentacao(e.target.value)}
-                        className="font-mono"
-                      />
-                      <Button size="icon" variant="outline" onClick={() => handleApplyRateio("Alimentação Escolar", globalAlimentacao)}>
-                        <Calculator className="h-4 w-4" />
-                      </Button>
+              <div className="lg:col-span-1 space-y-6">
+                <Card className="shadow-md border-accent/20">
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Share2 className="h-5 w-5 text-accent" />
+                      Rateio Municipal (Global)
+                    </CardTitle>
+                    <CardDescription>Distribuir custos centralizados proporcionalmente.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    <div className="space-y-2">
+                      <Label className="text-xs uppercase font-bold text-muted-foreground">Alimentação Escolar (Total)</Label>
+                      <div className="flex gap-2">
+                        <Input 
+                          placeholder="R$ 0,00" 
+                          value={globalAlimentacao} 
+                          onChange={e => setGlobalAlimentacao(e.target.value)}
+                          className="font-mono"
+                        />
+                        <Button size="icon" variant="outline" onClick={() => handleApplyRateio("Alimentação Escolar", globalAlimentacao)}>
+                          <Calculator className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="space-y-2">
-                    <Label className="text-xs uppercase font-bold text-muted-foreground">Transporte (Total)</Label>
-                    <div className="flex gap-2">
-                      <Input 
-                        placeholder="R$ 0,00" 
-                        value={globalTransporte} 
-                        onChange={e => setGlobalTransporte(e.target.value)}
-                        className="font-mono"
-                      />
-                      <Button size="icon" variant="outline" onClick={() => handleApplyRateio("Transporte", globalTransporte)}>
-                        <Calculator className="h-4 w-4" />
-                      </Button>
+                    <div className="space-y-2">
+                      <Label className="text-xs uppercase font-bold text-muted-foreground">Transporte (Total)</Label>
+                      <div className="flex gap-2">
+                        <Input 
+                          placeholder="R$ 0,00" 
+                          value={globalTransporte} 
+                          onChange={e => setGlobalTransporte(e.target.value)}
+                          className="font-mono"
+                        />
+                        <Button size="icon" variant="outline" onClick={() => handleApplyRateio("Transporte", globalTransporte)}>
+                          <Calculator className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="p-4 bg-muted/50 rounded-xl border space-y-2">
-                    <div className="flex items-center gap-2 text-primary font-bold text-[10px] uppercase">
-                      <Info className="h-3 w-3" /> Regra de Rateio
+                    <div className="p-4 bg-muted/50 rounded-xl border space-y-2">
+                      <div className="flex items-center gap-2 text-primary font-bold text-[10px] uppercase">
+                        <Info className="h-3 w-3" /> Regra de Rateio
+                      </div>
+                      <p className="text-[10px] text-muted-foreground leading-tight">
+                        O sistema calcula o valor por aluno (Total ÷ Matrículas da Rede) e multiplica pelo número de alunos de cada escola municipal.
+                      </p>
                     </div>
-                    <p className="text-[10px] text-muted-foreground leading-tight">
-                      O sistema calcula o valor por aluno (Total ÷ Matrículas da Rede) e multiplica pelo número de alunos de cada escola municipal.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+
+                <Card className="shadow-md">
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <PieChart className="h-5 w-5 text-primary" />
+                      Distribuição de Custos na Rede
+                    </CardTitle>
+                    <CardDescription>Somatório por categoria (Sessão Atual)</CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <Table>
+                      <TableHeader className="bg-muted/50">
+                        <TableRow>
+                          <TableHead className="text-xs">Categoria</TableHead>
+                          <TableHead className="text-right text-xs">Total Rede (R$)</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {EXPENSE_CATEGORIES.map(cat => (
+                          <TableRow key={cat}>
+                            <TableCell className="text-[11px] font-medium py-2">{cat}</TableCell>
+                            <TableCell className="text-right text-[11px] font-mono py-2">
+                              R$ {(networkCategoryTotals[cat] || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              </div>
 
               <Card className="lg:col-span-2 border-none shadow-md">
-                <CardHeader className="flex flex-row items-center justify-between">
+                <CardHeader className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div>
                     <CardTitle className="text-lg">Mapa de Gastos: Rede Municipal</CardTitle>
-                    <CardDescription>Gerenciamento permanente do banco de dados</CardDescription>
+                    <CardDescription>Gerenciamento e Auditoria dos Registros</CardDescription>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <Button 
                       variant="outline" 
                       size="sm" 
@@ -569,7 +638,7 @@ export default function DespesasPage() {
                           className="text-destructive border-destructive hover:bg-destructive/10 gap-2"
                         >
                           <Trash2 className="h-4 w-4" />
-                          Apagar Tudo do Banco
+                          Apagar do Banco
                         </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent>
@@ -599,34 +668,88 @@ export default function DespesasPage() {
                       disabled={isSaving || expenses.length === 0}
                     >
                       {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                      Salvar Sessão no Banco
+                      Salvar Tudo
                     </Button>
                   </div>
                 </CardHeader>
                 <CardContent>
                   <div className="border rounded-xl overflow-hidden">
-                    <ScrollArea className="h-[400px]">
+                    <ScrollArea className="h-[500px]">
                       <Table>
                         <TableHeader className="bg-muted/80 sticky top-0 z-10 backdrop-blur-sm">
                           <TableRow>
                             <TableHead>Escola</TableHead>
-                            <TableHead>INEP</TableHead>
                             <TableHead className="text-right">Matrículas</TableHead>
                             <TableHead className="text-right">ETI %</TableHead>
                             <TableHead className="text-right">Custo Anual (R$)</TableHead>
+                            <TableHead className="text-center">Auditoria</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {schools.map((school: any) => (
                             <TableRow key={school.id}>
-                              <TableCell className="font-medium">{school.nome}</TableCell>
-                              <TableCell className="font-mono text-xs">{school.codigo_inep}</TableCell>
-                              <TableCell className="text-right">{school.total_matriculas}</TableCell>
-                              <TableCell className="text-right">
-                                <Badge variant="outline">{school.percentual_eti}%</Badge>
+                              <TableCell className="font-medium">
+                                <div className="text-sm">{school.nome}</div>
+                                <div className="text-[10px] text-muted-foreground font-mono">INEP: {school.codigo_inep}</div>
                               </TableCell>
-                              <TableCell className="text-right font-bold text-primary">
+                              <TableCell className="text-right text-xs">{school.total_matriculas}</TableCell>
+                              <TableCell className="text-right">
+                                <Badge variant="outline" className="text-[10px]">{school.percentual_eti}%</Badge>
+                              </TableCell>
+                              <TableCell className="text-right font-bold text-primary font-mono text-sm">
                                 R$ {(schoolExpensesSum[school.id] || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <Dialog>
+                                  <DialogTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary">
+                                      <Eye className="h-4 w-4" />
+                                    </Button>
+                                  </DialogTrigger>
+                                  <DialogContent className="max-w-2xl">
+                                    <DialogHeader>
+                                      <DialogTitle>Revisão de Custos: {school.nome}</DialogTitle>
+                                      <DialogDescription>Detalhamento por categoria de despesa na sessão atual.</DialogDescription>
+                                    </DialogHeader>
+                                    <div className="space-y-4 py-4">
+                                      <div className="grid grid-cols-2 gap-4">
+                                        <div className="p-3 bg-muted/30 rounded-lg">
+                                          <p className="text-[10px] uppercase font-bold text-muted-foreground">Matrículas Totais</p>
+                                          <p className="text-lg font-bold">{school.total_matriculas}</p>
+                                        </div>
+                                        <div className="p-3 bg-primary/10 rounded-lg">
+                                          <p className="text-[10px] uppercase font-bold text-primary">Total Anual Lançado</p>
+                                          <p className="text-lg font-bold text-primary">R$ {(schoolExpensesSum[school.id] || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                                        </div>
+                                      </div>
+                                      <Separator />
+                                      <Table>
+                                        <TableHeader>
+                                          <TableRow>
+                                            <TableHead className="text-xs">Categoria</TableHead>
+                                            <TableHead className="text-right text-xs">Valor (R$)</TableHead>
+                                            <TableHead className="text-right text-xs">% do Total</TableHead>
+                                          </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                          {EXPENSE_CATEGORIES.map(cat => {
+                                            const val = expenses.find(e => e.schoolId === school.id && e.category === cat)?.value || 0;
+                                            const perc = (schoolExpensesSum[school.id] || 0) > 0 ? (val / schoolExpensesSum[school.id]) * 100 : 0;
+                                            return (
+                                              <TableRow key={cat}>
+                                                <TableCell className="text-xs font-medium py-2">{cat}</TableCell>
+                                                <TableCell className="text-right text-xs font-mono py-2">R$ {val.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
+                                                <TableCell className="text-right text-[10px] py-2">
+                                                  <Badge variant="secondary" className="text-[9px]">{perc.toFixed(1)}%</Badge>
+                                                </TableCell>
+                                              </TableRow>
+                                            );
+                                          })}
+                                        </TableBody>
+                                      </Table>
+                                    </div>
+                                  </DialogContent>
+                                </Dialog>
                               </TableCell>
                             </TableRow>
                           ))}
