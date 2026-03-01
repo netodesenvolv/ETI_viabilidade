@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { UserPlus, UserCog, Mail, Shield, Trash2, Search, Loader2, MapPin } from "lucide-react"
+import { UserPlus, UserCog, Mail, Shield, Trash2, Search, Loader2, MapPin, Lock } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import {
   Dialog,
@@ -26,7 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
-import { useCollection, useFirestore } from "@/firebase"
+import { useCollection, useFirestore, useAuth } from "@/firebase"
 import { collection, doc, setDoc, deleteDoc } from "firebase/firestore"
 import { errorEmitter } from '@/firebase/error-emitter'
 import { FirestorePermissionError } from '@/firebase/errors'
@@ -34,6 +34,7 @@ import { FirestorePermissionError } from '@/firebase/errors'
 export default function UsuariosPage() {
   const { toast } = useToast()
   const db = useFirestore()
+  const auth = useAuth()
   const { data: users, loading } = useCollection(db ? collection(db, "users") : null)
   
   const [searchTerm, setSearchTerm] = useState("")
@@ -43,41 +44,76 @@ export default function UsuariosPage() {
   const [newUser, setNewUser] = useState({
     name: "",
     email: "",
+    password: "",
     role: "Leitor",
     municipio: "",
     municipioId: ""
   })
 
-  const handleAddUser = (e: React.FormEvent) => {
+  const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!db) return
+    if (!db || !auth) return
     setIsAdding(true)
 
-    const userRef = doc(collection(db, "users"))
-    const userData = {
-      ...newUser,
-      status: "Ativo",
-      createdAt: new Date().toISOString()
-    }
+    try {
+      // Importações dinâmicas para gerenciar a instância secundária de criação
+      const { initializeApp, getApp, getApps } = await import('firebase/app');
+      const { getAuth, createUserWithEmailAndPassword, signOut } = await import('firebase/auth');
+      const { firebaseConfig } = await import('@/firebase/config');
 
-    setDoc(userRef, userData)
-      .then(() => {
-        setIsOpen(false)
-        setNewUser({ name: "", email: "", role: "Leitor", municipio: "", municipioId: "" })
-        toast({
-          title: "Usuário convidado",
-          description: `O acesso para ${userData.name} foi restrito ao município de ${userData.municipio}.`,
-        })
+      // Cria ou recupera uma instância secundária para não deslogar o admin atual
+      let secondaryApp;
+      const apps = getApps();
+      const existingApp = apps.find(a => a.name === 'SecondaryCreator');
+      if (existingApp) {
+        secondaryApp = existingApp;
+      } else {
+        secondaryApp = initializeApp(firebaseConfig, 'SecondaryCreator');
+      }
+      
+      const secondaryAuth = getAuth(secondaryApp);
+      
+      // 1. Cria o usuário no Firebase Auth
+      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, newUser.email, newUser.password);
+      const uid = userCredential.user.uid;
+      
+      // Desloga da instância secundária imediatamente para manter a segurança
+      await signOut(secondaryAuth);
+
+      // 2. Cria o perfil no Firestore usando o UID do Auth
+      const userRef = doc(db, "users", uid);
+      const userData = {
+        name: newUser.name,
+        email: newUser.email,
+        role: newUser.role,
+        municipio: newUser.municipio,
+        municipioId: newUser.municipioId,
+        status: "Ativo",
+        createdAt: new Date().toISOString()
+      }
+
+      await setDoc(userRef, userData);
+
+      setIsOpen(false)
+      setNewUser({ name: "", email: "", password: "", role: "Leitor", municipio: "", municipioId: "" })
+      toast({
+        title: "Usuário cadastrado",
+        description: `O acesso para ${userData.name} foi criado com sucesso no município de ${userData.municipio}.`,
       })
-      .catch(async (error) => {
-        const permissionError = new FirestorePermissionError({
-          path: userRef.path,
-          operation: 'create',
-          requestResourceData: userData,
-        })
-        errorEmitter.emit('permission-error', permissionError)
+    } catch (error: any) {
+      let message = "Erro ao criar usuário."
+      if (error.code === 'auth/email-already-in-use') message = "Este e-mail já está sendo usado por outro usuário."
+      if (error.code === 'auth/weak-password') message = "A senha deve ter pelo menos 6 caracteres."
+      if (error.code === 'permission-denied') message = "Você não tem permissão para realizar esta operação no banco de dados."
+      
+      toast({
+        title: "Falha no Cadastro",
+        description: message,
+        variant: "destructive"
       })
-      .finally(() => setIsAdding(false))
+    } finally {
+      setIsAdding(false)
+    }
   }
 
   const handleDeleteUser = (userId: string) => {
@@ -116,7 +152,7 @@ export default function UsuariosPage() {
             <DialogHeader>
               <DialogTitle>Convidar Novo Usuário</DialogTitle>
               <DialogDescription>
-                Insira os dados e atribua o município de atuação do colaborador.
+                Insira os dados e atribua o município e a senha inicial do colaborador.
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleAddUser} className="space-y-4 py-4">
@@ -140,6 +176,21 @@ export default function UsuariosPage() {
                   onChange={(e) => setNewUser({...newUser, email: e.target.value})}
                   required 
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">Senha Inicial</Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input 
+                    id="password" 
+                    type="password"
+                    placeholder="Mínimo 6 caracteres" 
+                    className="pl-9"
+                    value={newUser.password}
+                    onChange={(e) => setNewUser({...newUser, password: e.target.value})}
+                    required 
+                  />
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -181,7 +232,7 @@ export default function UsuariosPage() {
               </div>
               <DialogFooter className="pt-4">
                 <Button type="submit" className="w-full" disabled={isAdding}>
-                  {isAdding ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : "Enviar Convite"}
+                  {isAdding ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : "Finalizar Cadastro"}
                 </Button>
               </DialogFooter>
             </form>
