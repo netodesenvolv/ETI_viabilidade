@@ -178,9 +178,9 @@ export default function DashboardPage() {
       },
       {
         title: "Fator VAAf/Integral",
-        value: "1.30x",
+        value: `${parametros.fatores.C1.toFixed(2)}x`,
         status: "Referência 2026",
-        description: "Alavancagem financeira por aluno integral está otimizada.",
+        description: `Peso multiplicador do FUNDEB para matrículas em ETI sobre o valor base.`,
         variant: "info"
       }
     ];
