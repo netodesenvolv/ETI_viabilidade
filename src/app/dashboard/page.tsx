@@ -3,7 +3,28 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { KPICard } from "@/components/dashboard/kpi-card";
-import { Users, GraduationCap, DollarSign, AlertCircle, TrendingUp, Sparkles, FileText, Download, Loader2, Filter, Layers, Copy, Check, FileDown, ShieldCheck, Scale, Info, Building2 } from "lucide-react";
+import { 
+  Users, 
+  GraduationCap, 
+  DollarSign, 
+  AlertCircle, 
+  TrendingUp, 
+  Sparkles, 
+  FileText, 
+  Copy, 
+  Check, 
+  FileDown, 
+  ShieldCheck, 
+  Scale, 
+  Info, 
+  Building2,
+  Filter,
+  Layers,
+  Eye,
+  Loader2,
+  Search,
+  PieChart
+} from "lucide-react";
 import { DEFAULT_PARAMETERS } from "@/lib/constants";
 import { calcularVAAF, calcularVAAT, calcularPNAE, calcularMDE, calcularOutros } from "@/lib/calculations";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -17,6 +38,14 @@ import { useAuth, useFirestore, useUser, useDoc, useCollection } from "@/firebas
 import { doc, collection } from "firebase/firestore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 const DEPENDENCIA_LABELS: Record<string, string> = {
   "1": "Federal",
@@ -77,8 +106,8 @@ export default function DashboardPage() {
       const outros = calcularOutros(school, parametros, totalMatriculasMunicipal);
       
       const receitaTotal = vaaf + vaat + pnae + mde + outros;
-      const schoolExpenses = (allExpenses || []).filter((e: any) => e.schoolId === school.id);
-      const despesaReal = schoolExpenses.reduce((acc, e: any) => acc + (e.value || 0), 0);
+      const schoolExpensesList = (allExpenses || []).filter((e: any) => e.schoolId === school.id);
+      const despesaReal = schoolExpensesList.reduce((acc, e: any) => acc + (e.value || 0), 0);
       
       const despesaTotal = despesaReal;
       
@@ -96,7 +125,8 @@ export default function DashboardPage() {
         ...school,
         vaaf, vaat, pnae, mde, outros,
         receitaTotal, despesaTotal, saldo, cobertura,
-        custoAluno, receitaAluno, status
+        custoAluno, receitaAluno, status,
+        expensesDetail: schoolExpensesList
       };
     });
 
@@ -127,8 +157,8 @@ export default function DashboardPage() {
 
     const percETI = totalMatriculasRede > 0 ? (totalETIRede / totalMatriculasRede) * 100 : 0;
     
-    const schoolsWithEtiCount = schoolAnalyses.filter(s => (s.total_eti || 0) > 0).length;
-    const percSchoolsWithEti = schoolAnalyses.length > 0 ? (schoolsWithEtiCount / schoolAnalyses.length) * 100 : 0;
+    const schoolsWithEtiCount = municipalSchools.filter(s => (s.total_eti || 0) > 0).length;
+    const percSchoolsWithEti = municipalSchools.length > 0 ? (schoolsWithEtiCount / municipalSchools.length) * 100 : 0;
 
     const hasExpenses = (allExpenses || []).length > 0;
 
@@ -169,7 +199,7 @@ export default function DashboardPage() {
         hasExpenses,
         schoolsWithEtiCount,
         percSchoolsWithEti,
-        totalSchools: schoolAnalyses.length
+        totalSchools: municipalSchools.length
       },
       networkTotals: municipalRevenue,
       nativeInsights: technicalInsights
@@ -186,7 +216,8 @@ export default function DashboardPage() {
     setReport(null);
     
     try {
-      const getPerc = (val: number) => networkTotals.total > 0 ? Math.round((val / networkTotals.total) * 100) : 0;
+      const getSum = (key: string) => analysis.reduce((acc, d: any) => acc + (d[key] || 0), 0);
+      const totalRevenue = networkTotals.total;
 
       const input = {
         municipio: profile?.municipio || "Município",
@@ -200,14 +231,14 @@ export default function DashboardPage() {
         saldoTotalRede: Math.round(stats.totalSaldo),
         saldoStatus: stats.totalSaldo >= 0 ? "superávit" : "déficit",
         escolasEmDeficit: stats.deficitCount,
-        totalEscolas: analysis.length,
+        totalEscolas: stats.totalSchools,
         escolasETIlt20Percent: analysis.filter(s => (s.percentual_eti || 0) < 20).length,
         composicaoReceitas: {
-          fundebVaaf: { amount: Math.round(networkTotals.vaaf), percentage: getPerc(networkTotals.vaaf) },
-          vaat: { amount: Math.round(networkTotals.vaat), percentage: getPerc(networkTotals.vaat) },
-          pnae: { amount: Math.round(networkTotals.pnae), percentage: getPerc(networkTotals.pnae) },
-          mdeLiquido: { amount: Math.round(networkTotals.mde), percentage: getPerc(networkTotals.mde) },
-          outros: { amount: Math.round(networkTotals.outros), percentage: getPerc(networkTotals.outros) },
+          fundebVaaf: { amount: Math.round(networkTotals.vaaf), percentage: Math.round((networkTotals.vaaf / totalRevenue) * 100) },
+          vaat: { amount: Math.round(networkTotals.vaat), percentage: Math.round((networkTotals.vaat / totalRevenue) * 100) },
+          pnae: { amount: Math.round(networkTotals.pnae), percentage: Math.round((networkTotals.pnae / totalRevenue) * 100) },
+          mdeLiquido: { amount: Math.round(networkTotals.mde), percentage: Math.round((networkTotals.mde / totalRevenue) * 100) },
+          outros: { amount: Math.round(networkTotals.outros), percentage: Math.round((networkTotals.outros / totalRevenue) * 100) },
         },
         escolasEmAtencao: analysis
           .filter(s => s.status === 'deficit')
@@ -372,6 +403,7 @@ export default function DashboardPage() {
                     <TableHead className="text-right">Custo/Aluno</TableHead>
                     <TableHead className="text-right">% ETI</TableHead>
                     <TableHead>Situação</TableHead>
+                    <TableHead className="text-center">Auditoria</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -392,10 +424,84 @@ export default function DashboardPage() {
                             {school.status.toUpperCase()}
                           </Badge>
                         </TableCell>
+                        <TableCell className="text-center">
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary">
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent className="max-w-2xl">
+                              <DialogHeader>
+                                <DialogTitle>Auditoria de Viabilidade: {school.nome}</DialogTitle>
+                                <DialogDescription>Composição de Receitas e Despesas consolidadas no banco.</DialogDescription>
+                              </DialogHeader>
+                              <ScrollArea className="max-h-[70vh] pr-4">
+                                <div className="space-y-6 py-4">
+                                  <div className="grid grid-cols-2 gap-4">
+                                    <div className="p-4 bg-green-50 border border-green-100 rounded-xl">
+                                      <p className="text-[10px] font-bold text-green-800 uppercase mb-1">Receita Total Anual</p>
+                                      <p className="text-xl font-bold text-green-900">R$ {school.receitaTotal.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</p>
+                                    </div>
+                                    <div className="p-4 bg-red-50 border border-red-100 rounded-xl">
+                                      <p className="text-[10px] font-bold text-red-800 uppercase mb-1">Custo Total Anual</p>
+                                      <p className="text-xl font-bold text-red-900">R$ {school.despesaTotal.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</p>
+                                    </div>
+                                  </div>
+
+                                  <section className="space-y-3">
+                                    <h4 className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-2">
+                                      <TrendingUp className="h-3 w-3" /> Composição de Receitas (2026)
+                                    </h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                      <RevenueDetailItem label="FUNDEB VAAf" value={school.vaaf} />
+                                      <RevenueDetailItem label="Complementação VAAT" value={school.vaat} />
+                                      <RevenueDetailItem label="PNAE Alimentação" value={school.pnae} />
+                                      <RevenueDetailItem label="MDE / Recursos Próprios" value={school.mde} />
+                                      <RevenueDetailItem label="Outros Repasses (QSE/PDDE)" value={school.outros} />
+                                    </div>
+                                  </section>
+
+                                  <Separator />
+
+                                  <section className="space-y-3">
+                                    <h4 className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-2">
+                                      <PieChart className="h-3 w-3" /> Detalhamento de Despesas Reais
+                                    </h4>
+                                    {school.expensesDetail && school.expensesDetail.length > 0 ? (
+                                      <div className="border rounded-xl overflow-hidden">
+                                        <Table>
+                                          <TableHeader className="bg-muted/30">
+                                            <TableRow>
+                                              <TableHead className="text-[10px]">Categoria</TableHead>
+                                              <TableHead className="text-right text-[10px]">Valor (R$)</TableHead>
+                                            </TableRow>
+                                          </TableHeader>
+                                          <TableBody>
+                                            {school.expensesDetail.map((exp: any, idx: number) => (
+                                              <TableRow key={idx} className="text-[11px]">
+                                                <TableCell className="py-2">{exp.category}</TableCell>
+                                                <TableCell className="text-right py-2 font-mono">R$ {exp.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
+                                              </TableRow>
+                                            ))}
+                                          </TableBody>
+                                        </Table>
+                                      </div>
+                                    ) : (
+                                      <div className="p-8 text-center bg-muted/20 rounded-xl border border-dashed text-muted-foreground text-xs italic">
+                                        Nenhuma despesa real lançada para esta unidade.
+                                      </div>
+                                    )}
+                                  </section>
+                                </div>
+                              </ScrollArea>
+                            </DialogContent>
+                          </Dialog>
+                        </TableCell>
                       </TableRow>
                     ))
                   ) : (
-                    <TableRow><TableCell colSpan={5} className="h-32 text-center text-muted-foreground italic">Nenhum dado encontrado.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground italic">Nenhum dado encontrado.</TableCell></TableRow>
                   )}
                 </TableBody>
               </Table>
@@ -442,6 +548,15 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+    </div>
+  );
+}
+
+function RevenueDetailItem({ label, value }: { label: string, value: number }) {
+  return (
+    <div className="flex justify-between items-center p-2 rounded-lg bg-muted/30">
+      <span className="text-[10px] text-muted-foreground font-medium">{label}</span>
+      <span className="text-xs font-mono font-bold">R$ {value.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</span>
     </div>
   );
 }
