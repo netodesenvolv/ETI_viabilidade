@@ -8,15 +8,15 @@ import {
   Database,
   TrendingUp,
   CreditCard,
-  AlertTriangle,
-  FileText,
-  Calculator,
   ChevronRight,
   GraduationCap,
-  Users
+  Users,
+  LogOut,
+  Calculator,
+  Building2
 } from "lucide-react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 
 import {
   Sidebar,
@@ -31,6 +31,8 @@ import {
 import { useAuth, useFirestore, useUser, useDoc } from "@/firebase"
 import { doc } from "firebase/firestore"
 import { Skeleton } from "@/components/ui/skeleton"
+import { signOut } from "firebase/auth"
+import { useToast } from "@/hooks/use-toast"
 
 const menuItems = [
   { title: "Painel Executivo", icon: LayoutDashboard, href: "/dashboard" },
@@ -45,6 +47,8 @@ const menuItems = [
 
 export function DashboardSidebar() {
   const pathname = usePathname()
+  const router = useRouter()
+  const { toast } = useToast()
   const auth = useAuth()
   const db = useFirestore()
   const { user } = useUser(auth)
@@ -56,6 +60,17 @@ export function DashboardSidebar() {
 
   const userProfileRef = React.useMemo(() => (db && user ? doc(db, 'users', user.uid) : null), [db, user]);
   const { data: profile, loading } = useDoc(userProfileRef);
+
+  const handleLogout = async () => {
+    if (!auth) return;
+    try {
+      await signOut(auth);
+      toast({ title: "Sessão Encerrada", description: "Você saiu do sistema com segurança." });
+      router.push('/login');
+    } catch (error) {
+      toast({ title: "Erro ao sair", description: "Não foi possível encerrar a sessão.", variant: "destructive" });
+    }
+  };
 
   return (
     <Sidebar collapsible="icon">
@@ -76,7 +91,7 @@ export function DashboardSidebar() {
                 asChild
                 isActive={pathname === item.href}
                 tooltip={item.title}
-                className="hover:bg-sidebar-accent"
+                className="hover:bg-sidebar-accent transition-colors"
               >
                 <Link href={item.href}>
                   <item.icon className="h-5 w-5" />
@@ -87,19 +102,35 @@ export function DashboardSidebar() {
           ))}
         </SidebarMenu>
       </SidebarContent>
-      <SidebarFooter className="p-4">
-        <div className="bg-white/10 rounded-lg p-3 group-data-[collapsible=icon]:hidden">
-          <p className="text-xs text-white/60">Exercício 2026</p>
-          <div className="h-5 flex items-center">
-            {!mounted || loading ? (
-              <Skeleton className="h-3 w-24 bg-white/20" />
-            ) : (
-              <p className="text-sm font-medium text-white truncate">
-                {profile?.municipio || "Município não definido"}
-              </p>
-            )}
+      <SidebarFooter className="p-4 space-y-2">
+        <div className="bg-white/10 rounded-lg p-3 group-data-[collapsible=icon]:hidden border border-white/5">
+          <p className="text-[10px] uppercase font-bold text-white/40 tracking-wider mb-1">Exercício 2026</p>
+          <div className="flex items-center gap-2">
+            <Building2 className="h-3 w-3 text-white/60" />
+            <div className="flex-1 overflow-hidden">
+              {!mounted || loading ? (
+                <Skeleton className="h-3 w-full bg-white/10" />
+              ) : (
+                <p className="text-xs font-medium text-white truncate">
+                  {profile?.municipio || "Município não definido"}
+                </p>
+              )}
+            </div>
           </div>
         </div>
+        
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton 
+              onClick={handleLogout}
+              className="text-red-300 hover:text-red-100 hover:bg-red-500/20"
+              tooltip="Sair do Sistema"
+            >
+              <LogOut className="h-5 w-5" />
+              <span>Sair do Sistema</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarFooter>
     </Sidebar>
   )
