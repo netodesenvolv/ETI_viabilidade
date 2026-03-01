@@ -20,23 +20,24 @@ export default function DashboardLayout({
   const [isAuthorized, setIsAuthorized] = useState(false);
 
   useEffect(() => {
-    // Só tomamos uma decisão de navegação quando o loading do Auth terminar
+    // Só toma decisão após o término do carregamento da autenticação
     if (!loading) {
       if (!user) {
-        // Redirecionamento atômico para evitar loops
+        // Redirecionamento seguro para a tela de login
         router.replace('/login');
       } else {
+        // Usuário presente, autoriza a visualização do layout
         setIsAuthorized(true);
       }
     }
   }, [user, loading, router]);
 
-  // Enquanto verifica a sessão ou se não estiver autorizado, mantém o loader
+  // Enquanto verifica a sessão ou se não estiver autorizado, mantém o loader fixo
   if (loading || !isAuthorized) {
     return (
       <div className="h-screen w-full flex flex-col items-center justify-center gap-4 bg-background">
         <Loader2 className="h-10 w-10 animate-spin text-primary opacity-20" />
-        <p className="text-muted-foreground animate-pulse font-headline">Validando acesso seguro...</p>
+        <p className="text-muted-foreground animate-pulse font-headline">Sincronizando acesso seguro...</p>
       </div>
     );
   }
@@ -54,7 +55,7 @@ export default function DashboardLayout({
           <div className="flex items-center gap-4">
             <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-primary/5 border border-primary/10 rounded-full">
               <ShieldAlert className="h-3 w-3 text-primary" />
-              <span className="text-[10px] uppercase font-bold text-primary tracking-widest">Ambiente Seguro</span>
+              <span className="text-[10px] uppercase font-bold text-primary tracking-widest">Ambiente Autenticado</span>
             </div>
           </div>
         </header>

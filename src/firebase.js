@@ -6,4 +6,28 @@
  * Re-exporta todas as funcionalidades do diretório src/firebase/index.ts
  * para garantir compatibilidade com as rotas de importação @/firebase.
  */
-export * from './firebase/index';
+import { 
+  initializeFirebase,
+  FirebaseProvider,
+  FirebaseClientProvider,
+  useCollection,
+  useDoc,
+  useUser,
+  useFirebase,
+  useFirebaseApp,
+  useFirestore,
+  useAuth
+} from './firebase/index';
+
+export {
+  initializeFirebase,
+  FirebaseProvider,
+  FirebaseClientProvider,
+  useCollection,
+  useDoc,
+  useUser,
+  useFirebase,
+  useFirebaseApp,
+  useFirestore,
+  useAuth
+};

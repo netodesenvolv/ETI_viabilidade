@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { GraduationCap, Loader2, Lock, Mail, ShieldCheck, UserCheck, AlertCircle } from "lucide-react"
+import { GraduationCap, Loader2, Lock, Mail, ShieldCheck, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -21,6 +21,7 @@ export default function LoginPage() {
   const [seeding, setSeeding] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
+  // Parâmetros para a Homologação do Administrador Geral
   const [targetCity, setTargetCity] = useState("Teixeira de Freitas")
   const [targetIbge, setTargetIbge] = useState("2932705")
   
@@ -31,26 +32,28 @@ export default function LoginPage() {
   const db = useFirestore()
   const { user, loading: authLoading } = useUser(auth)
 
-  // Redirecionamento único e estável
+  // Redirecionamento estável: monitora o usuário e o loading
   useEffect(() => {
     if (!authLoading && user) {
       router.replace('/dashboard')
     }
   }, [user, authLoading, router])
 
-  const ensureUserProfile = async (uid: string, userEmail: string) => {
+  const ensureUserProfile = async (uid: string, userEmail: string, isInitialAdmin = false) => {
     if (!db) return;
     try {
       const userRef = doc(db, "users", uid);
       const userSnap = await getDoc(userRef);
 
+      // Se o usuário não existe, cria um perfil. 
+      // Se for o seed do admin, já vincula ao município alvo da homologação.
       if (!userSnap.exists()) {
         await setDoc(userRef, {
           name: userEmail.split('@')[0],
           email: userEmail,
-          role: "Admin",
-          municipio: targetCity,
-          municipioId: targetIbge,
+          role: isInitialAdmin ? "Admin" : "Leitor",
+          municipio: isInitialAdmin ? targetCity : "Aguardando Vínculo",
+          municipioId: isInitialAdmin ? targetIbge : "",
           status: "Ativo",
           createdAt: new Date().toISOString()
         });
@@ -69,13 +72,14 @@ export default function LoginPage() {
     
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password)
+      // Garante que o perfil exista ao logar
       await ensureUserProfile(userCredential.user.uid, userCredential.user.email!)
       toast({ title: "Bem-vindo", description: "Acesso autorizado com sucesso." })
-      // O redirecionamento é tratado pelo useEffect para evitar loops
     } catch (error: any) {
       let message = "E-mail ou senha incorretos."
       if (error.code === 'auth/user-not-found') message = "Usuário não cadastrado."
       if (error.code === 'auth/wrong-password') message = "Senha incorreta."
+      if (error.code === 'auth/invalid-credential') message = "Credenciais inválidas."
       
       setError(message)
       toast({ title: "Erro de Acesso", description: message, variant: "destructive" })
@@ -88,18 +92,28 @@ export default function LoginPage() {
     if (!auth || !db || seeding) return;
     setSeeding(true)
     setError(null)
+    
+    // Credenciais do Administrador Geral para Homologação
     const adminEmail = "castroalvesneto@gmail.com"
     const adminPass = "paix2018+"
 
     try {
+      // Tenta criar o usuário administrador geral
       const userCredential = await createUserWithEmailAndPassword(auth, adminEmail, adminPass)
-      await ensureUserProfile(userCredential.user.uid, userCredential.user.email!);
-      setEmail(adminEmail); setPassword(adminPass);
-      toast({ title: "Ambiente Criado", description: "Utilize o botão de Acessar para entrar." });
+      await ensureUserProfile(userCredential.user.uid, userCredential.user.email!, true);
+      
+      setEmail(adminEmail); 
+      setPassword(adminPass);
+      
+      toast({ 
+        title: "Homologação Concluída", 
+        description: "Administrador Geral criado e vinculado ao município alvo." 
+      });
     } catch (error: any) {
       if (error.code === 'auth/email-already-in-use') {
-        setEmail(adminEmail); setPassword(adminPass);
-        toast({ title: "Credenciais Preenchidas", description: "O usuário já existe no sistema." });
+        setEmail(adminEmail); 
+        setPassword(adminPass);
+        toast({ title: "Credenciais Preenchidas", description: "O Administrador Geral já possui cadastro." });
       } else {
         toast({ title: "Erro", description: error.message, variant: "destructive" });
       }
@@ -108,6 +122,7 @@ export default function LoginPage() {
     }
   }
 
+  // Enquanto verifica a sessão, exibe apenas o loader
   if (authLoading) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-background">
@@ -116,7 +131,8 @@ export default function LoginPage() {
     )
   }
 
-  if (user) return null; // Evita renderizar form se já estiver redirecionando
+  // Se já houver usuário, não renderiza o form para evitar loops visuais
+  if (user) return null;
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/10 via-background to-background">
@@ -179,13 +195,13 @@ export default function LoginPage() {
             <div className="w-full relative py-4">
               <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
               <div className="relative flex justify-center text-[10px] uppercase font-bold tracking-tighter">
-                <span className="bg-white px-3 text-muted-foreground">Homologação Municipal</span>
+                <span className="bg-white px-3 text-muted-foreground">Homologação de Administrador</span>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4 w-full mb-2">
               <div className="space-y-1">
-                <Label className="text-[10px] text-muted-foreground uppercase font-bold">Cidade Alvo</Label>
+                <Label className="text-[10px] text-muted-foreground uppercase font-bold">Cidado Alvo</Label>
                 <Input className="h-8 text-xs font-medium" value={targetCity} onChange={e => setTargetCity(e.target.value)} />
               </div>
               <div className="space-y-1">
@@ -203,15 +219,15 @@ export default function LoginPage() {
             >
               {seeding ? <Loader2 className="h-5 w-5 animate-spin" /> : <ShieldCheck className="h-5 w-5 text-primary/60" />}
               <div className="text-left">
-                <p className="text-xs font-bold leading-none text-slate-800">Gerar Acesso de Teste</p>
-                <p className="text-[10px] text-muted-foreground mt-1">Configura usuário admin padrão</p>
+                <p className="text-xs font-bold leading-none text-slate-800">Seed de Administrador Geral</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Vincula o e-mail mestre à prefeitura alvo</p>
               </div>
             </Button>
           </CardFooter>
         </form>
       </Card>
       <p className="mt-8 text-center text-xs text-muted-foreground">
-        © 2026 EduFin Insights • Sistema Restrito a Gestores Municipais
+        © 2026 EduFin Insights • Homologação Exclusiva para Administradores
       </p>
     </div>
   )
