@@ -176,9 +176,12 @@ export default function PipelineImportadorPage() {
 
       toast({ title: "Sucesso", description: "Pipeline nacional concluído com sucesso." });
     } catch (err: any) {
+      const isQuotaError = err.message?.includes('quota') || err.message?.includes('exhausted');
       toast({ 
-        title: "Erro no Pipeline", 
-        description: err.message, 
+        title: isQuotaError ? "Cota Excedida" : "Erro no Pipeline", 
+        description: isQuotaError 
+          ? "O limite de escritas do Firebase foi atingido. Verifique se a migração para o plano Blaze foi concluída." 
+          : err.message, 
         variant: "destructive" 
       });
     } finally {
