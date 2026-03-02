@@ -13,7 +13,8 @@ import {
   Users,
   LogOut,
   Calculator,
-  Building2
+  Building2,
+  FileJson
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
@@ -42,6 +43,7 @@ const menuItems = [
   { title: "Gestão de Despesas", icon: TrendingUp, href: "/dashboard/despesas" },
   { title: "Análise Custo-Aluno", icon: Calculator, href: "/dashboard/analise" },
   { title: "Simulador ETI", icon: GraduationCap, href: "/dashboard/simulador" },
+  { title: "Importador Mestre", icon: FileJson, href: "/dashboard/admin/pipeline", adminOnly: true },
   { title: "Usuários", icon: Users, href: "/dashboard/usuarios", adminOnly: true },
 ]
 
