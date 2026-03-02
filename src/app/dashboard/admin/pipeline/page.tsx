@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useMemo } from "react";
@@ -17,7 +16,8 @@ import {
   ArrowRight,
   RefreshCw,
   Info,
-  ShieldAlert
+  ShieldAlert,
+  Zap
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
@@ -37,7 +37,8 @@ interface INEPSchool {
 }
 
 /**
- * Throttling controlado para evitar exaustão de cota (Quota Exceeded)
+ * Throttling otimizado para planos pagos (Blaze).
+ * Mantemos uma pequena pausa apenas para evitar saturação do buffer do navegador.
  */
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -81,7 +82,7 @@ export default function PipelineImportadorPage() {
     }
 
     setLoading(true);
-    setStatus("Cruzando bases nacionais...");
+    setStatus("Sincronizando bases nacionais...");
     setProgress(5);
 
     try {
@@ -92,6 +93,7 @@ export default function PipelineImportadorPage() {
       schoolsRaw.forEach(row => {
         const inep = row.CO_ENTIDADE;
         const dep = row.TP_DEPENDENCIA;
+        // Filtramos apenas escolas municipais (TP_DEPENDENCIA = 3)
         if (!inep || dep !== "3") return;
 
         schoolMap.set(inep, {
@@ -148,10 +150,10 @@ export default function PipelineImportadorPage() {
       const totalCities = allEntries.length;
 
       for (const [mId, schools] of allEntries) {
-        // Reduzido para 200 por lote para maior estabilidade de rede
-        for (let i = 0; i < schools.length; i += 200) {
+        // Lotes maiores para plano Blaze (400 por lote)
+        for (let i = 0; i < schools.length; i += 400) {
           const batch = writeBatch(db);
-          const chunk = schools.slice(i, i + 200);
+          const chunk = schools.slice(i, i + 400);
           
           chunk.forEach(school => {
             const sRef = doc(db, 'municipios', mId, 'schools', school.codigo_inep);
@@ -159,8 +161,8 @@ export default function PipelineImportadorPage() {
           });
           
           await batch.commit();
-          // Pausa de 1s para respeitar limites de taxa e cota do plano gratuito
-          await delay(1000); 
+          // Pausa curta (200ms) apenas para respiro do navegador
+          await delay(200); 
         }
         
         cityCount++;
@@ -170,12 +172,9 @@ export default function PipelineImportadorPage() {
 
       toast({ title: "Sucesso", description: "Pipeline nacional concluído com sucesso." });
     } catch (err: any) {
-      const isQuotaError = err.message?.includes("quota") || err.code === "resource-exhausted";
       toast({ 
-        title: isQuotaError ? "Cota Excedida" : "Erro no Pipeline", 
-        description: isQuotaError 
-          ? "O limite diário de escritas do Firebase foi atingido (Plano Spark). O processo parou para evitar erros." 
-          : err.message, 
+        title: "Erro no Pipeline", 
+        description: err.message, 
         variant: "destructive" 
       });
     } finally {
@@ -202,15 +201,19 @@ export default function PipelineImportadorPage() {
           <h2 className="text-3xl font-headline font-bold text-primary">Importador Nacional</h2>
           <p className="text-muted-foreground">Processamento centralizado de microdados INEP 2025</p>
         </div>
-        <Badge variant="destructive" className="h-fit py-1 px-3">Cuidado: Escrita em Massa</Badge>
+        <div className="flex items-center gap-2">
+          <Badge className="bg-green-600 hover:bg-green-700 py-1 px-3 gap-1.5">
+            <Zap className="h-3.5 w-3.5" /> Alta Performance (Blaze)
+          </Badge>
+        </div>
       </div>
 
-      <Alert variant="destructive" className="bg-orange-50 border-orange-200 text-orange-800">
-        <AlertTriangle className="h-4 w-4 text-orange-600" />
-        <AlertTitle className="font-bold">Aviso de Cota (Plano Spark)</AlertTitle>
+      <Alert className="bg-blue-50 border-blue-200 text-blue-800">
+        <Info className="h-4 w-4 text-blue-600" />
+        <AlertTitle className="font-bold">Processamento de Larga Escala</AlertTitle>
         <AlertDescription className="text-xs">
-          O Firebase gratuito permite apenas 20.000 escritas por dia. Como o Censo Nacional tem mais de 100.000 escolas, 
-          este processo pode parar no meio por falta de cota. Se isso ocorrer, aguarde 24 horas para continuar.
+          O sistema está configurado para o plano Blaze, permitindo a escrita de todos os municípios simultaneamente. 
+          O join entre as tabelas de Escolas e Matrículas é feito automaticamente via CO_ENTIDADE.
         </AlertDescription>
       </Alert>
 
@@ -218,25 +221,25 @@ export default function PipelineImportadorPage() {
         <Card className="lg:col-span-1 shadow-md">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <FileUp className="h-5 w-5 text-primary" /> Fontes CSV
+              <FileUp className="h-5 w-5 text-primary" /> Fontes CSV (Nacional)
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <label className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1">
-                <Building className="h-3 w-3" /> 1. Escolas (CSV)
+                <Building className="h-3 w-3" /> 1. Escolas (Arquivo Nacional)
               </label>
               <Input type="file" accept=".csv" onChange={(e) => setSchoolsFile(e.target.files?.[0] || null)} />
             </div>
             <div className="space-y-2">
               <label className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1">
-                <Users className="h-3 w-3" /> 2. Matrículas (CSV)
+                <Users className="h-3 w-3" /> 2. Matrículas (Arquivo Nacional)
               </label>
               <Input type="file" accept=".csv" onChange={(e) => setEnrollmentsFile(e.target.files?.[0] || null)} />
             </div>
             <Button className="w-full gap-2 mt-4" onClick={handleRunPipeline} disabled={loading || !schoolsFile || !enrollmentsFile}>
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-              {loading ? "Rodando..." : "Iniciar Importação"}
+              {loading ? "Processando..." : "Rodar Pipeline Nacional"}
             </Button>
           </CardContent>
         </Card>
@@ -244,7 +247,7 @@ export default function PipelineImportadorPage() {
         <Card className="lg:col-span-2 shadow-md">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <RefreshCw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} /> Status do Pipeline
+              <RefreshCw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} /> Monitor de Distribuição
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-8 py-10">
@@ -255,17 +258,17 @@ export default function PipelineImportadorPage() {
                   <span>{progress}%</span>
                 </div>
                 <Progress value={progress} className="h-3" />
-                <div className="flex items-center gap-2 p-3 bg-blue-50 border rounded-lg text-blue-700">
-                  <Info className="h-4 w-4" />
+                <div className="flex items-center gap-2 p-3 bg-green-50 border rounded-lg text-green-700">
+                  <CheckCircle2 className="h-4 w-4" />
                   <p className="text-[10px]">
-                    Throttling: Lote de 200 escolas enviado. Aguardando 1s para respiro da cota.
+                    Modo Blaze Ativo: Gravando {cityCount || 0} municípios identificados nos arquivos.
                   </p>
                 </div>
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center h-48 border-2 border-dashed rounded-xl opacity-50">
                 <Database className="h-10 w-10 mb-2" />
-                <p className="text-sm font-medium">Aguardando início do processamento</p>
+                <p className="text-sm font-medium">Aguardando arquivos para distribuição nacional</p>
               </div>
             )}
           </CardContent>
