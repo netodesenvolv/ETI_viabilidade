@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useMemo } from "react";
@@ -47,6 +48,7 @@ export default function PipelineImportadorPage() {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState("");
+  const [cityCount, setCityCount] = useState(0);
   
   const [schoolsFile, setSchoolsFile] = useState<File | null>(null);
   const [enrollmentsFile, setEnrollmentsFile] = useState<File | null>(null);
@@ -84,6 +86,7 @@ export default function PipelineImportadorPage() {
     setLoading(true);
     setStatus("Sincronizando bases nacionais...");
     setProgress(5);
+    setCityCount(0);
 
     try {
       const schoolsText = await schoolsFile.text();
@@ -145,7 +148,7 @@ export default function PipelineImportadorPage() {
         consolidatedData.get(mId)?.push(schoolDoc);
       });
 
-      let cityCount = 0;
+      let processedCities = 0;
       const allEntries = Array.from(consolidatedData.entries());
       const totalCities = allEntries.length;
 
@@ -165,9 +168,10 @@ export default function PipelineImportadorPage() {
           await delay(200); 
         }
         
-        cityCount++;
-        setProgress(20 + Math.floor((cityCount / totalCities) * 80));
-        setStatus(`Processando: ${cityCount} de ${totalCities} prefeituras...`);
+        processedCities++;
+        setCityCount(processedCities);
+        setProgress(20 + Math.floor((processedCities / totalCities) * 80));
+        setStatus(`Processando: ${processedCities} de ${totalCities} prefeituras...`);
       }
 
       toast({ title: "Sucesso", description: "Pipeline nacional concluído com sucesso." });
