@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth, useFirestore, useUser, useDoc } from "@/firebase";
-import { doc, setDoc } from "firebase/firestore";
+import { doc, setDoc, writeBatch } from "firebase/firestore";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -37,9 +37,7 @@ interface ParsedSchool {
     ef_af_integral: number;
     ef_af_parcial: number;
     eja_fundamental: number;
-    eja_medio: number;
     especial_aee: number;
-    campo_rural: number;
   };
 }
 
@@ -85,80 +83,64 @@ export default function CensoAdminPage() {
   const processCSV = (text: string) => {
     const lines = text.split('\n');
     if (lines.length < 2) return [];
+    
     const firstLine = lines[0];
-    const separator = firstLine.includes(';') ? ';' : ',';
+    const separator = firstLine.includes('\t') ? '\t' : (firstLine.includes(';') ? ';' : ',');
     const headers = firstLine.split(separator).map(h => h.trim().replace(/"/g, ''));
     const schools: ParsedSchool[] = [];
 
     for (let i = 1; i < lines.length; i++) {
       if (!lines[i].trim()) continue;
-      const values = lines[i].split(separator).map(v => v.trim().replace(/"/g, ''));
+      const values = lineToValues(lines[i], separator);
       const row: Record<string, string> = {};
       headers.forEach((header, index) => { row[header] = values[index]; });
+      
       if (!row.CO_ENTIDADE) continue;
       
-      const total_matriculas = parseInt(row.QT_MAT_BAS || "0", 10);
+      const qInt = (k: string) => parseInt(row[k] || "0", 10);
       
-      // Mapeamento baseado nas colunas fornecidas (Microdados INEP)
-      const qt_inf_cre = parseInt(row.QT_MAT_INF_CRE || "0", 10);
-      const qt_inf_cre_int = parseInt(row.QT_MAT_INF_CRE_INT || "0", 10);
-      
-      const qt_inf_pre = parseInt(row.QT_MAT_INF_PRE || "0", 10);
-      const qt_inf_pre_int = parseInt(row.QT_MAT_INF_PRE_INT || "0", 10);
-      
-      const qt_fund_ai = parseInt(row.QT_MAT_FUND_AI || "0", 10);
-      const qt_fund_ai_int = parseInt(row.QT_MAT_FUND_AI_INT || "0", 10);
-      
-      const qt_fund_af = parseInt(row.QT_MAT_FUND_AF || "0", 10);
-      const qt_fund_af_int = parseInt(row.QT_MAT_FUND_AF_INT || "0", 10);
-      
-      const creche_int = qt_inf_cre_int;
-      const creche_par = Math.max(0, qt_inf_cre - qt_inf_cre_int);
-      
-      const pre_int = qt_inf_pre_int;
-      const pre_par = Math.max(0, qt_inf_pre - qt_inf_pre_int);
-      
-      const ef_ai_int = qt_fund_ai_int;
-      const ef_ai_par = Math.max(0, qt_fund_ai - qt_fund_ai_int);
-      
-      const ef_af_int = qt_fund_af_int;
-      const ef_af_par = Math.max(0, qt_fund_af - qt_fund_af_int);
-      
-      const eja_fund = parseInt(row.QT_MAT_EJA_FUND || "0", 10);
-      const eja_med = parseInt(row.QT_MAT_EJA_MED || "0", 10);
-      const especial = parseInt(row.QT_MAT_ESP || "0", 10);
-      const rural = parseInt(row.QT_MAT_ZR_RUR || "0", 10);
+      const total_bas = qInt('QT_MAT_BAS');
+      const creche_int = qInt('QT_MAT_INF_CRE_INT');
+      const creche_tot = qInt('QT_MAT_INF_CRE');
+      const pre_int = qInt('QT_MAT_INF_PRE_INT');
+      const pre_tot = qInt('QT_MAT_INF_PRE');
+      const ef_ai_int = qInt('QT_MAT_FUND_AI_INT');
+      const ef_ai_tot = qInt('QT_MAT_FUND_AI');
+      const ef_af_int = qInt('QT_MAT_FUND_AF_INT');
+      const ef_af_tot = qInt('QT_MAT_FUND_AF');
 
       const total_eti = creche_int + pre_int + ef_ai_int + ef_af_int;
       
       schools.push({
         id: row.CO_ENTIDADE,
         codigo_inep: row.CO_ENTIDADE,
-        nome: row.NO_ENTIDADE || "Escola sem nome",
+        nome: row.NO_ENTIDADE || row.nome || "Escola sem nome",
         municipio: row.NO_MUNICIPIO || "N/A",
         uf: row.SG_UF || "N/A",
         localizacao: row.TP_LOCALIZACAO === "2" ? "Rural" : "Urbana",
         tp_dependencia: row.TP_DEPENDENCIA || "3",
-        total_matriculas,
+        total_matriculas: total_bas,
         total_eti,
-        percentual_eti: total_matriculas > 0 ? Number(((total_eti / total_matriculas) * 100).toFixed(1)) : 0,
+        percentual_eti: total_bas > 0 ? Number(((total_eti / total_bas) * 100).toFixed(1)) : 0,
         matriculas: {
           creche_integral: creche_int,
-          creche_parcial: creche_par,
+          creche_parcial: Math.max(0, creche_tot - creche_int),
           pre_integral: pre_int,
-          pre_parcial: pre_par,
+          pre_parcial: Math.max(0, pre_tot - pre_int),
           ef_ai_integral: ef_ai_int,
-          ef_ai_parcial: ef_ai_par,
+          ef_ai_parcial: Math.max(0, ef_ai_tot - ef_ai_int),
           ef_af_integral: ef_af_int,
-          ef_af_parcial: ef_af_par,
-          eja_fundamental: eja_fund,
-          eja_medio: eja_med,
-          especial_aee: especial,
-          campo_rural: rural
+          ef_af_parcial: Math.max(0, ef_af_tot - ef_af_int),
+          eja_fundamental: qInt('QT_MAT_EJA_FUND'),
+          especial_aee: qInt('QT_MAT_ESP')
         }
       });
     }
     return schools;
+  };
+
+  const lineToValues = (line: string, sep: string) => {
+    return line.split(sep).map(v => v.trim().replace(/"/g, ''));
   };
 
   const handleStartImport = () => {
@@ -175,7 +157,7 @@ export default function CensoAdminPage() {
         setParsedSchools(schools);
         setStep(2);
       } catch (err) {
-        toast({ title: "Erro", description: "Falha ao ler o CSV.", variant: "destructive" });
+        toast({ title: "Erro", description: "Falha ao ler o arquivo estatístico.", variant: "destructive" });
       } finally { setUploading(false); }
     };
     reader.readAsText(file);
@@ -185,26 +167,34 @@ export default function CensoAdminPage() {
     if (!db || !municipioId) return;
     setConsolidating(true);
     try {
-      const promises = parsedSchools.map(school => {
-        const schoolRef = doc(db, 'municipios', municipioId, 'schools', school.id);
-        const data = {
-          codigo_inep: school.codigo_inep,
-          nome: school.nome,
-          total_matriculas: school.total_matriculas,
-          total_eti: school.total_eti,
-          percentual_eti: school.percentual_eti,
-          localizacao: school.localizacao.toLowerCase() === "rural" ? "rural" : "urbana",
-          tp_dependencia: school.tp_dependencia,
-          matriculas: school.matriculas,
-          updatedAt: new Date().toISOString()
-        };
-        return setDoc(schoolRef, data, { merge: true }).catch(async () => {
-          errorEmitter.emit('permission-error', new FirestorePermissionError({ path: schoolRef.path, operation: 'write', requestResourceData: data }));
+      // Chunking para garantir performance no município individual
+      for (let i = 0; i < parsedSchools.length; i += 500) {
+        const batch = writeBatch(db);
+        const chunk = parsedSchools.slice(i, i + 500);
+        
+        chunk.forEach(school => {
+          const schoolRef = doc(db, 'municipios', municipioId, 'schools', school.id);
+          const data = {
+            codigo_inep: school.codigo_inep,
+            nome: school.nome,
+            total_matriculas: school.total_matriculas,
+            total_eti: school.total_eti,
+            percentual_eti: school.percentual_eti,
+            localizacao: school.localizacao.toLowerCase() === "rural" ? "rural" : "urbana",
+            tp_dependencia: school.tp_dependencia,
+            matriculas: school.matriculas,
+            updatedAt: new Date().toISOString()
+          };
+          batch.set(schoolRef, data, { merge: true });
         });
-      });
-      await Promise.all(promises);
-      toast({ title: "Dados Consolidados", description: `${parsedSchools.length} escolas salvas com microdados de matrícula.` });
+        
+        await batch.commit();
+      }
+
+      toast({ title: "Dados Consolidados", description: `${parsedSchools.length} escolas atualizadas no banco municipal.` });
       setStep(1); setParsedSchools([]); setFileName(null);
+    } catch (e) {
+      toast({ title: "Erro na Consolidação", description: "Não foi possível gravar os dados.", variant: "destructive" });
     } finally { setConsolidating(false); }
   };
 
@@ -213,7 +203,7 @@ export default function CensoAdminPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-headline font-bold text-primary">Censo Escolar</h2>
-          <p className="text-muted-foreground">Consolidação de microdados INEP para {profile?.municipio || "o município"}</p>
+          <p className="text-muted-foreground">Consolidação de microdados INEP 2025 para {profile?.municipio}</p>
         </div>
         {!municipioId && <Badge variant="destructive" className="animate-pulse py-1 gap-2"><MapPin className="h-3 w-3" /> Vínculo Municipal Pendente</Badge>}
       </div>
@@ -223,7 +213,7 @@ export default function CensoAdminPage() {
           <AlertCircle className="h-5 w-5" />
           <AlertTitle className="font-bold">Perfil Incompleto</AlertTitle>
           <AlertDescription className="space-y-4">
-            <p>Sua conta não tem um município vinculado no banco de dados. Para prosseguir, informe os dados da cidade que você gerencia abaixo:</p>
+            <p>Sua conta não tem um município vinculado. Informe os dados abaixo para gerenciar sua rede:</p>
             <div className="flex flex-col sm:flex-row gap-2 max-w-xl">
               <Input placeholder="Nome da Cidade" value={manualCity} onChange={e => setManualCity(e.target.value)} className="bg-white border-red-200" />
               <Input placeholder="Cód. IBGE" value={manualIbge} onChange={e => setManualIbge(e.target.value)} className="bg-white border-red-200" />
@@ -238,11 +228,11 @@ export default function CensoAdminPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <Card className="lg:col-span-1 h-fit">
-          <CardHeader><CardTitle className="text-lg">Fonte de Dados</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-lg">Upload Local</CardTitle></CardHeader>
           <CardContent className="space-y-6">
             <div className="p-6 border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-3 bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => fileInputRef.current?.click()}>
               {fileName ? <FileText className="h-8 w-8 text-primary" /> : <FileUp className="h-8 w-8 text-primary/40" />}
-              <p className="text-xs font-medium text-center">{fileName || "Escolher CSV do INEP"}</p>
+              <p className="text-xs font-medium text-center">{fileName || "Escolher CSV Matrículas"}</p>
               <Input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={(e) => { setFileName(e.target.files?.[0]?.name || null); setStep(1); }} />
             </div>
             <Button className="w-full gap-2" disabled={uploading || !fileName || consolidating} onClick={handleStartImport}>
@@ -250,19 +240,19 @@ export default function CensoAdminPage() {
               Carregar Dados
             </Button>
             <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg">
-              <p className="text-[10px] text-blue-700 font-bold uppercase mb-1">Dica de Colunas</p>
-              <p className="text-[10px] text-blue-600 leading-tight">O CSV deve conter: CO_ENTIDADE, NO_ENTIDADE, QT_MAT_BAS e colunas de microdados (QT_MAT_INF_PRE_INT, etc.)</p>
+              <p className="text-[10px] text-blue-700 font-bold uppercase mb-1">Mapeamento INEP 2025</p>
+              <p className="text-[10px] text-blue-600 leading-tight">O sistema reconhece as colunas: CO_ENTIDADE, QT_MAT_BAS e colunas de microdados integrais.</p>
             </div>
           </CardContent>
         </Card>
 
         <Card className="lg:col-span-3">
-          <CardHeader><CardTitle className="text-lg">Visualização Prévia Granular</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-lg">Visualização de Microdados</CardTitle></CardHeader>
           <CardContent>
             {step === 1 ? (
               <div className="h-[400px] flex flex-col items-center justify-center text-muted-foreground gap-4 border-2 border-dashed rounded-xl bg-muted/10 text-center p-8">
                 <Globe className="h-10 w-10 opacity-20" />
-                <p className="text-sm">Aguardando upload para <b>{profile?.municipio || "Município não identificado"}</b></p>
+                <p className="text-sm">Aguardando arquivo estatístico para <b>{profile?.municipio || "sua rede"}</b></p>
               </div>
             ) : (
               <div className="space-y-6">
@@ -293,10 +283,10 @@ export default function CensoAdminPage() {
                   </ScrollArea>
                 </div>
                 <div className="flex items-center justify-between p-4 bg-green-50 rounded-xl border border-green-200">
-                  <p className="text-green-800 font-bold text-sm flex items-center gap-2"><CheckCircle2 className="h-5 w-5" /> Salvar em {profile?.municipio}</p>
+                  <p className="text-green-800 font-bold text-sm flex items-center gap-2"><CheckCircle2 className="h-5 w-5" /> Prontos para {profile?.municipio}</p>
                   <Button onClick={handleConsolidate} disabled={consolidating || !municipioId} className="bg-green-700 hover:bg-green-800">
                     {consolidating && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                    Confirmar Consolidação Granular
+                    Confirmar Consolidação
                   </Button>
                 </div>
               </div>

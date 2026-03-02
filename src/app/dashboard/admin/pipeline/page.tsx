@@ -53,9 +53,8 @@ export default function PipelineImportadorPage() {
     const lines = text.split('\n');
     if (lines.length < 2) return [];
     
-    // Detectar separador (vírgula ou ponto e vírgula)
     const firstLine = lines[0];
-    const separator = firstLine.includes(';') ? ';' : ',';
+    const separator = firstLine.includes('\t') ? '\t' : (firstLine.includes(';') ? ';' : ',');
     
     const headers = firstLine.split(separator).map(h => h.trim().replace(/"/g, ''));
     
@@ -74,22 +73,19 @@ export default function PipelineImportadorPage() {
     }
 
     setLoading(true);
-    setStatus("Iniciando leitura dos arquivos nacionais...");
+    setStatus("Lendo cadastro nacional de escolas...");
     setProgress(5);
 
     try {
-      // 1. Ler Arquivo de Escolas (Estrutura INEP 2025)
       const schoolsText = await schoolsFile.text();
-      setStatus("Mapeando cadastro de escolas (INEP 2025)...");
       const schoolsRaw = parseCSV(schoolsText);
       const schoolMap = new Map<string, INEPSchool>();
       
       schoolsRaw.forEach(row => {
-        // Mapeamento baseado nos headers enviados pelo usuário
-        const inep = row.CO_ENTIDADE || row.codigo_inep;
-        const dep = row.TP_DEPENDENCIA || "3";
+        const inep = row.CO_ENTIDADE;
+        const dep = row.TP_DEPENDENCIA;
         
-        // Focamos apenas em dependência administrativa municipal (3) conforme requisito
+        // Filtro: Apenas Escolas Municipais (3)
         if (!inep || dep !== "3") return;
 
         schoolMap.set(inep, {
@@ -104,33 +100,32 @@ export default function PipelineImportadorPage() {
       });
 
       setProgress(25);
-      setStatus(`Processando microdados de matrículas para ${schoolMap.size} escolas municipais...`);
+      setStatus(`Cruzando microdados de matrículas para ${schoolMap.size} escolas municipais...`);
 
-      // 2. Ler Arquivo de Matrículas
       const enrollmentsText = await enrollmentsFile.text();
       const enrollmentsRaw = parseCSV(enrollmentsText);
       const consolidatedData = new Map<string, any[]>();
 
       enrollmentsRaw.forEach(row => {
-        const inep = row.CO_ENTIDADE || row.codigo_inep;
+        const inep = row.CO_ENTIDADE;
         const schoolInfo = schoolMap.get(inep);
         if (!schoolInfo) return;
 
         const qInt = (k: string) => parseInt(row[k] || "0", 10);
         
-        // Mapeamento de Tempo Integral (Microdados Consolidado)
-        const creche_int = qInt('QT_MAT_INF_CRE_INT') || qInt('QT_MAT_INF_CRE_INTEGRAL');
-        const pre_int = qInt('QT_MAT_INF_PRE_INT') || qInt('QT_MAT_INF_PRE_INTEGRAL');
-        const fund_ai_int = qInt('QT_MAT_FUND_AI_INT') || qInt('QT_MAT_FUND_AI_INTEGRAL');
-        const fund_af_int = qInt('QT_MAT_FUND_AF_INT') || qInt('QT_MAT_FUND_AF_INTEGRAL');
+        // Mapeamento INEP 2025 - Campos Integrais
+        const creche_int = qInt('QT_MAT_INF_CRE_INT');
+        const pre_int = qInt('QT_MAT_INF_PRE_INT');
+        const fund_ai_int = qInt('QT_MAT_FUND_AI_INT');
+        const fund_af_int = qInt('QT_MAT_FUND_AF_INT');
 
-        // Totais de Parcial
-        const qt_inf_cre = qInt('QT_MAT_INF_CRE');
-        const qt_inf_pre = qInt('QT_MAT_INF_PRE');
+        // Totais para cálculo de parciais
+        const qt_creche = qInt('QT_MAT_INF_CRE');
+        const qt_pre = qInt('QT_MAT_INF_PRE');
         const qt_fund_ai = qInt('QT_MAT_FUND_AI');
         const qt_fund_af = qInt('QT_MAT_FUND_AF');
-        const total_bas = qInt('QT_MAT_BAS') || qInt('total_matriculas');
-
+        
+        const total_bas = qInt('QT_MAT_BAS');
         const total_eti = creche_int + pre_int + fund_ai_int + fund_af_int;
 
         const schoolDoc = {
@@ -140,9 +135,9 @@ export default function PipelineImportadorPage() {
           percentual_eti: total_bas > 0 ? Number(((total_eti / total_bas) * 100).toFixed(1)) : 0,
           matriculas: {
             creche_integral: creche_int,
-            creche_parcial: Math.max(0, qt_inf_cre - creche_int),
+            creche_parcial: Math.max(0, qt_creche - creche_int),
             pre_integral: pre_int,
-            pre_parcial: Math.max(0, qt_inf_pre - pre_int),
+            pre_parcial: Math.max(0, qt_pre - pre_int),
             ef_ai_integral: fund_ai_int,
             ef_ai_parcial: Math.max(0, qt_fund_ai - fund_ai_int),
             ef_af_integral: fund_af_int,
@@ -159,14 +154,13 @@ export default function PipelineImportadorPage() {
       });
 
       setProgress(50);
-      setStatus(`Salvando ${consolidatedData.size} municípios no Firestore...`);
+      setStatus(`Salvando dados segmentados por município (${consolidatedData.size} cidades)...`);
 
-      // 3. Persistência com Batching Chunked (Limite de 500 por lote)
-      let count = 0;
+      let cityCount = 0;
       const totalCities = consolidatedData.size;
       
       for (const [mId, schools] of Array.from(consolidatedData.entries())) {
-        // Chunk de 500 para evitar erros de limite do Firestore Batch
+        // Chunking de 500 para respeitar limites do Firestore
         for (let i = 0; i < schools.length; i += 500) {
           const batch = writeBatch(db);
           const chunk = schools.slice(i, i + 500);
@@ -179,14 +173,14 @@ export default function PipelineImportadorPage() {
           await batch.commit();
         }
         
-        count++;
-        setProgress(50 + Math.floor((count / totalCities) * 50));
-        setStatus(`Distribuindo: ${count} de ${totalCities} municípios...`);
+        cityCount++;
+        setProgress(50 + Math.floor((cityCount / totalCities) * 50));
+        setStatus(`Processado: ${cityCount} de ${totalCities} municípios...`);
       }
 
       toast({ 
-        title: "Distribuição Concluída", 
-        description: `Base INEP 2025 roteada com sucesso para ${totalCities} municípios.`,
+        title: "Pipeline Concluído", 
+        description: `Microdados INEP 2025 distribuídos para ${totalCities} municípios municipais.`,
       });
     } catch (err: any) {
       toast({ title: "Falha no Pipeline", description: err.message, variant: "destructive" });
@@ -203,7 +197,7 @@ export default function PipelineImportadorPage() {
         <AlertTriangle className="h-12 w-12 text-destructive/50" />
         <h3 className="text-xl font-bold">Acesso Restrito ao Master Admin</h3>
         <p className="text-muted-foreground max-w-sm">
-          Este pipeline é de uso exclusivo para atualização da base nacional consolidada.
+          Este pipeline nacional é de uso exclusivo para o administrador geral da plataforma.
         </p>
       </div>
     );
@@ -214,17 +208,17 @@ export default function PipelineImportadorPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-headline font-bold text-primary">Importador Mestre (Pipeline Nacional)</h2>
-          <p className="text-muted-foreground">Distribuição centralizada de microdados INEP 2025 para todos os municípios</p>
+          <p className="text-muted-foreground">Distribuição automatizada de microdados INEP 2025</p>
         </div>
-        <Badge className="bg-accent h-fit py-1 px-3">Censo 2025 v1.1</Badge>
+        <Badge className="bg-accent h-fit py-1 px-3">Censo 2025 v1.2</Badge>
       </div>
 
       <Alert className="bg-blue-50 border-blue-200 text-blue-800 shadow-sm">
         <Info className="h-4 w-4 text-blue-600" />
-        <AlertTitle className="font-bold text-sm">Lógica de Roteamento Nacional</AlertTitle>
+        <AlertTitle className="font-bold text-sm">Escalabilidade e Multi-tenancy</AlertTitle>
         <AlertDescription className="text-xs">
-          O pipeline processa automaticamente apenas escolas com <code>TP_DEPENDENCIA = 3</code> (Municipais). 
-          O vínculo com cada prefeitura é feito através do código <code>CO_MUNICIPIO</code> do INEP.
+          O pipeline une automaticamente o cadastro nacional às matrículas e separa os dados por município. 
+          Escolas existentes são atualizadas (Upsert), garantindo a integridade da rede municipal.
         </AlertDescription>
       </Alert>
 
@@ -233,16 +227,16 @@ export default function PipelineImportadorPage() {
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2 text-primary">
               <FileUp className="h-5 w-5" />
-              Fontes de Dados
+              Fontes Nacionais
             </CardTitle>
-            <CardDescription>Upload dos microdados nacionais</CardDescription>
+            <CardDescription>Carregue os arquivos brutos do INEP</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-2">
               <label className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1">
-                <Building className="h-3 w-3" /> 1. Cadastro de Escolas
+                <Building className="h-3 w-3" /> 1. Cadastro de Escolas (CSV)
               </label>
-              <div className="flex items-center gap-2 p-3 border rounded-lg bg-muted/20 hover:bg-muted/40 transition-colors">
+              <div className="flex items-center gap-2 p-3 border rounded-lg bg-muted/20">
                 <Input 
                   type="file" 
                   accept=".csv" 
@@ -254,9 +248,9 @@ export default function PipelineImportadorPage() {
 
             <div className="space-y-2">
               <label className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1">
-                <Users className="h-3 w-3" /> 2. Microdados Matrículas
+                <Users className="h-3 w-3" /> 2. Matrículas Consolidado (CSV)
               </label>
-              <div className="flex items-center gap-2 p-3 border rounded-lg bg-muted/20 hover:bg-muted/40 transition-colors">
+              <div className="flex items-center gap-2 p-3 border rounded-lg bg-muted/20">
                 <Input 
                   type="file" 
                   accept=".csv" 
@@ -267,12 +261,12 @@ export default function PipelineImportadorPage() {
             </div>
 
             <Button 
-              className="w-full gap-2 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20" 
+              className="w-full gap-2 bg-primary hover:bg-primary/90" 
               onClick={handleRunPipeline} 
               disabled={loading || !schoolsFile || !enrollmentsFile}
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-              {loading ? "Distribuindo..." : "Iniciar Processamento em Lote"}
+              {loading ? "Processando Lote..." : "Iniciar Pipeline Nacional"}
             </Button>
           </CardContent>
         </Card>
@@ -281,9 +275,9 @@ export default function PipelineImportadorPage() {
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
               <RefreshCw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
-              Monitor de Roteamento
+              Monitor de Distribuição
             </CardTitle>
-            <CardDescription>Acompanhe a escrita dos documentos no Firestore</CardDescription>
+            <CardDescription>Acompanhe o roteamento dos microdados fiscais</CardDescription>
           </CardHeader>
           <CardContent className="space-y-8 py-8">
             {loading ? (
@@ -300,9 +294,9 @@ export default function PipelineImportadorPage() {
                     <Database className="h-4 w-4 text-primary" />
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-primary uppercase tracking-tight">Escritura Massiva Ativa</p>
+                    <p className="text-sm font-bold text-primary uppercase">Escrita Segura Firestore</p>
                     <p className="text-xs text-muted-foreground leading-relaxed">
-                      O pipeline está fragmentando os dados em lotes (chunks) de 500 para garantir a integridade da gravação por município.
+                      Lote atual: Processando documentos e fragmentando em chunks de 500 para evitar timeout.
                     </p>
                   </div>
                 </div>
@@ -311,8 +305,8 @@ export default function PipelineImportadorPage() {
               <div className="flex flex-col items-center justify-center h-48 space-y-4 text-muted-foreground border-2 border-dashed rounded-2xl bg-white/50">
                 <CheckCircle2 className="h-12 w-12 opacity-10" />
                 <div className="text-center">
-                  <p className="text-sm font-medium">Aguardando arquivos nacionais...</p>
-                  <p className="text-[10px]">Utilize os CSVs brutos baixados do portal INEP.</p>
+                  <p className="text-sm font-medium">Pipeline Pronto para Receber Dados</p>
+                  <p className="text-[10px]">Utilize os CSVs nacionais brutos do portal INEP.</p>
                 </div>
               </div>
             )}
@@ -320,18 +314,18 @@ export default function PipelineImportadorPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                <div className="p-4 bg-white rounded-xl border space-y-2 shadow-sm">
                   <div className="flex items-center gap-2 text-[10px] font-bold text-primary uppercase">
-                    <ArrowRight className="h-3 w-3" /> Join de Microdados
+                    <ArrowRight className="h-3 w-3" /> Sharding IBGE
                   </div>
                   <p className="text-[11px] text-muted-foreground leading-tight">
-                    Cruzamento automático via <code>CO_ENTIDADE</code>. As escolas pré-existentes são atualizadas (Upsert).
+                    Os dados são injetados diretamente na coleção do município correspondente ao código IBGE.
                   </p>
                </div>
                <div className="p-4 bg-white rounded-xl border space-y-2 shadow-sm">
                   <div className="flex items-center gap-2 text-[10px] font-bold text-green-600 uppercase">
-                    <ArrowRight className="h-3 w-3" /> Sharding Municipal
+                    <ArrowRight className="h-3 w-3" /> Conservação de Dados
                   </div>
                   <p className="text-[11px] text-muted-foreground leading-tight">
-                    Distribuição no path <code>/municipios/[CO_MUNICIPIO]/schools/</code> para acesso isolado.
+                    Parâmetros customizados e despesas lançadas pelas secretarias não são afetados.
                   </p>
                </div>
             </div>
