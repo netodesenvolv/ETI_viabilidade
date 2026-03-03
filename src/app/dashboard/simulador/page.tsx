@@ -52,6 +52,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { EnrollmentCounts } from "@/types";
 
 interface SimulacaoResult {
   receitaAtual: number;
@@ -134,32 +135,43 @@ export default function SimuladorETIPage() {
       const receitaAtual = vaafA + vaatA + pnaeA + mdeA + outrosA;
 
       const fatorReducao = logicaExpansao === 'capacidade' ? 2 : 1;
-      const alunosParciaisRemover = novasMatriculasETI * fatorReducao;
+      const vagasQueDevemSerLiberadas = novasMatriculasETI * fatorReducao;
       
       const novasMatriculas = { ...schoolMatriculas };
       
+      // Adiciona as novas matrículas integrais (priorizando Ensino Fundamental Anos Iniciais como padrão do simulador)
       novasMatriculas.ef_ai_integral = (novasMatriculas.ef_ai_integral || 0) + novasMatriculasETI;
       
-      let remanescenteRemover = alunosParciaisRemover;
-      const removiveisAI = Math.min(remanescenteRemover, novasMatriculas.ef_ai_parcial || 0);
-      novasMatriculas.ef_ai_parcial = (novasMatriculas.ef_ai_parcial || 0) - removiveisAI;
-      remanescenteRemover -= removiveisAI;
-      
-      if (remanescenteRemover > 0) {
-        const removiveisAF = Math.min(remanescenteRemover, novasMatriculas.ef_af_parcial || 0);
-        novasMatriculas.ef_af_parcial = (novasMatriculas.ef_af_parcial || 0) - removiveisAF;
-        remanescenteRemover -= removiveisAF;
+      // Lógica de Expulsão: Para dar lugar ao Integral, removemos as matrículas parciais
+      // Na ordem: EJA -> EF AF Parcial -> EF AI Parcial -> Pré Parcial -> Creche Parcial
+      let remanescenteRemover = vagasQueDevemSerLiberadas;
+      const categoriasParciais: (keyof EnrollmentCounts)[] = [
+        'eja_fundamental',
+        'eja_medio',
+        'ef_af_parcial',
+        'ef_ai_parcial',
+        'pre_parcial',
+        'creche_parcial'
+      ];
+
+      for (const cat of categoriasParciais) {
+        if (remanescenteRemover <= 0) break;
+        const valorAtual = Number(novasMatriculas[cat] || 0);
+        const removiveis = Math.min(remanescenteRemover, valorAtual);
+        (novasMatriculas[cat] as any) = valorAtual - removiveis;
+        remanescenteRemover -= removiveis;
       }
 
+      // Calcula o novo total de matrículas físicas (CPFs)
       const totalMatriculasEscolaNova = Object.values(novasMatriculas).reduce((a: any, b: any) => a + (Number(b) || 0), 0);
       const diferencaAlunosEscola = selectedSchool.total_matriculas - totalMatriculasEscolaNova;
 
-      // Rubricas fixas na simulação de conversão para isolar o ganho de ETI
+      // Cálculo de Receita Simulada (Rubricas fixas vs dinâmicas conforme solicitado)
       const vaafS = calcularVAAF(novasMatriculas, parametros);
-      const vaatS = vaatA; 
+      const vaatS = vaatA; // Mantém fixo conforme regra de negócio solicitada
       const pnaeS = calcularPNAE(novasMatriculas, parametros);
-      const mdeS = mdeA; 
-      const outrosS = outrosA; 
+      const mdeS = mdeA; // Mantém fixo conforme regra de negócio solicitada
+      const outrosS = outrosA; // Mantém fixo conforme regra de negócio solicitada
       
       const receitaSimulada = vaafS + vaatS + pnaeS + mdeS + outrosS;
       const incrementoReceitaBruto = receitaSimulada - receitaAtual;
@@ -340,7 +352,7 @@ export default function SimuladorETIPage() {
                   <Label htmlFor="capacidade" className="cursor-pointer space-y-1">
                     <div className="font-bold flex items-center gap-2">Impacto Físico (1:2)</div>
                     <p className="text-[10px] text-muted-foreground leading-tight">
-                      Cada 1 novo integral substitui 2 parciais (Manhã e Tarde). Reflete lotação máxima.
+                      Cada 1 novo integral substitui 2 parciais (Manhã e Tarde). Reflete lotação máxima das salas.
                     </p>
                   </Label>
                 </div>
@@ -360,7 +372,7 @@ export default function SimuladorETIPage() {
               <Slider 
                 value={[novasMatriculasETI]} 
                 onValueChange={(v) => setNovasMatriculasETI(v[0])} 
-                max={100} 
+                max={500} 
                 step={1} 
               />
             </div>
@@ -405,7 +417,7 @@ export default function SimuladorETIPage() {
               <div className="space-y-1">
                 <h4 className="font-bold text-primary">Pronto para Simular</h4>
                 <p className="text-muted-foreground text-xs max-w-[250px]">
-                  Configure os parâmetros à esquerda e clique em <b>Calcular</b> para ver o impacto financeiro.
+                  Configure os parâmetros à esquerda e clique em <b>Calcular</b> para ver o impacto financeiro e físico.
                 </p>
               </div>
             </div>
@@ -485,17 +497,19 @@ export default function SimuladorETIPage() {
                     <div className="space-y-2">
                       <div className="flex justify-between text-xs">
                         <span className="text-muted-foreground">Modelo</span>
-                        <span className="font-bold text-accent">{logicaExpansao === 'simples' ? 'Conversão 1:1' : 'Conversão 1:2'}</span>
+                        <span className="font-bold text-accent">{logicaExpansao === 'simples' ? 'Conversão 1:1' : 'Impacto Físico 1:2'}</span>
                       </div>
                       <div className="flex justify-between text-xs">
                         <span className="text-muted-foreground">Novas Vagas Integrais</span>
                         <span className="font-bold text-accent">+{resultado.novasMatriculasETI} alunos</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-muted-foreground">Total Alunos na Unidade</span>
-                        <span className={`font-bold ${resultado.reducaoVagas > 0 ? 'text-destructive' : 'text-primary'}`}>
-                          {resultado.totalMatriculasEscolaNova} ({resultado.reducaoVagas > 0 ? `-${resultado.reducaoVagas}` : 'Sem perdas'})
-                        </span>
+                        <span className="text-muted-foreground">Vagas Parciais Liberadas</span>
+                        <span className="font-bold text-destructive">-{resultado.reducaoVagas + resultado.novasMatriculasETI} matrículas</span>
+                      </div>
+                      <div className="flex justify-between text-xs pt-1 border-t">
+                        <span className="text-muted-foreground">Matrículas Físicas Totais</span>
+                        <span className="font-bold text-primary">{resultado.totalMatriculasEscolaNova} alunos</span>
                       </div>
                     </div>
                   </CardContent>
