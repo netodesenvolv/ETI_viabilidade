@@ -86,13 +86,17 @@ export default function DespesasPage() {
   // Estados para Rateio Global
   const [globalAlimentacao, setGlobalAlimentacao] = useState("");
   const [globalTransporte, setGlobalTransporte] = useState("");
+  const [globalUtilidades, setGlobalUtilidades] = useState("");
+  const [globalMaterial, setGlobalMaterial] = useState("");
+  const [globalServicos, setGlobalServicos] = useState("");
+  const [globalOutros, setGlobalOutros] = useState("");
 
   // Firebase
   const auth = useAuth();
   const db = useFirestore();
   const { user } = useUser(auth);
   const userProfileRef = useMemo(() => (db && user ? doc(db, 'users', user.uid) : null), [db, user]);
-  const { data: profile } = useDoc(userProfileRef);
+  const { data: profile, loading: profileLoading } = useDoc(userProfileRef);
   const municipioId = profile?.municipioId;
 
   // Escolas do Município
@@ -142,7 +146,6 @@ export default function DespesasPage() {
     
     try {
       const promises = expenses.map(entry => {
-        // Sanitiza a categoria para remover barras e caracteres que quebram o path do Firestore
         const sanitizedCategory = entry.category.replace(/[\s/()]+/g, '_');
         const expenseId = `${entry.schoolId}_${sanitizedCategory}_2026`;
         const expenseRef = doc(db, 'municipios', municipioId, 'expenses', expenseId);
@@ -205,7 +208,7 @@ export default function DespesasPage() {
       });
 
       await Promise.all(deletePromises);
-      setExpenses([]); // Limpa a sessão também
+      setExpenses([]); 
 
       toast({
         title: "Banco de Dados Limpo",
@@ -567,6 +570,66 @@ export default function DespesasPage() {
                           className="font-mono"
                         />
                         <Button size="icon" variant="outline" onClick={() => handleApplyRateio("Transporte", globalTransporte)}>
+                          <Calculator className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs uppercase font-bold text-muted-foreground">Utilidades (Total)</Label>
+                      <div className="flex gap-2">
+                        <Input 
+                          placeholder="R$ 0,00" 
+                          value={globalUtilidades} 
+                          onChange={e => setGlobalUtilidades(e.target.value)}
+                          className="font-mono"
+                        />
+                        <Button size="icon" variant="outline" onClick={() => handleApplyRateio("Utilidades (Energia/Água)", globalUtilidades)}>
+                          <Calculator className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs uppercase font-bold text-muted-foreground">Material Didático (Total)</Label>
+                      <div className="flex gap-2">
+                        <Input 
+                          placeholder="R$ 0,00" 
+                          value={globalMaterial} 
+                          onChange={e => setGlobalMaterial(e.target.value)}
+                          className="font-mono"
+                        />
+                        <Button size="icon" variant="outline" onClick={() => handleApplyRateio("Material Didático", globalMaterial)}>
+                          <Calculator className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs uppercase font-bold text-muted-foreground">Serviços Terceirizados (Total)</Label>
+                      <div className="flex gap-2">
+                        <Input 
+                          placeholder="R$ 0,00" 
+                          value={globalServicos} 
+                          onChange={e => setGlobalServicos(e.target.value)}
+                          className="font-mono"
+                        />
+                        <Button size="icon" variant="outline" onClick={() => handleApplyRateio("Serviços Terceirizados", globalServicos)}>
+                          <Calculator className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs uppercase font-bold text-muted-foreground">Outros Custos (Total)</Label>
+                      <div className="flex gap-2">
+                        <Input 
+                          placeholder="R$ 0,00" 
+                          value={globalOutros} 
+                          onChange={e => setGlobalOutros(e.target.value)}
+                          className="font-mono"
+                        />
+                        <Button size="icon" variant="outline" onClick={() => handleApplyRateio("Outros", globalOutros)}>
                           <Calculator className="h-4 w-4" />
                         </Button>
                       </div>
