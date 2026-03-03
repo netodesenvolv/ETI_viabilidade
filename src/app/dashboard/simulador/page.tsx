@@ -145,6 +145,7 @@ export default function SimuladorETIPage() {
 
     setTimeout(() => {
       const schoolMatriculas = selectedSchool.matriculas || {};
+      const totalMatriculasAntes = PHYSICAL_BUCKETS.reduce((acc, cat) => acc + (Number(schoolMatriculas[cat]) || 0), 0);
       
       const vaafA = calcularVAAF(schoolMatriculas, parametros);
       const vaatA = calcularVAAT(selectedSchool, parametros, totalMatriculasRedeAtual);
@@ -156,7 +157,6 @@ export default function SimuladorETIPage() {
       const schoolExpensesList = (allExpenses || []).filter((e: any) => e.schoolId === selectedSchoolId);
       const despesaAtual = schoolExpensesList.reduce((acc, e: any) => acc + (e.value || 0), 0);
       
-      // Classificação de despesas para redimensionamento
       const despesaPessoal = schoolExpensesList
         .filter(e => PERSONNEL_CATEGORIES.includes(e.category))
         .reduce((acc, e) => acc + (e.value || 0), 0);
@@ -178,7 +178,6 @@ export default function SimuladorETIPage() {
 
       let remanescenteRemover = vagasQueDevemSerLiberadas;
       let totalRemovidoFisico = 0;
-      const totalFisicoAntes = PHYSICAL_BUCKETS.reduce((acc, cat) => acc + (Number(schoolMatriculas[cat]) || 0), 0);
 
       for (const cat of categoriasPrioridadeRemover) {
         if (remanescenteRemover <= 0) break;
@@ -189,18 +188,6 @@ export default function SimuladorETIPage() {
         totalRemovidoFisico += removiveis;
       }
 
-      // Limpeza de marcadores se a escola for toda convertida
-      if (totalFisicoAntes > 0) {
-        const percRemovido = totalRemovidoFisico / totalFisicoAntes;
-        if (percRemovido >= 0.98) {
-           novasMatriculas.especial_aee = 0;
-           novasMatriculas.indigena_quilombola = 0;
-           novasMatriculas.campo_rural = 0;
-        } else {
-           novasMatriculas.especial_aee = Math.max(0, Math.round(novasMatriculas.especial_aee * (1 - percRemovido)));
-        }
-      }
-
       const totalMatriculasEscolaNova = PHYSICAL_BUCKETS.reduce((acc, cat) => acc + (Number(novasMatriculas[cat]) || 0), 0);
       const ratioAlunos = totalMatriculasAntes > 0 ? totalMatriculasEscolaNova / totalMatriculasAntes : 1;
 
@@ -208,7 +195,6 @@ export default function SimuladorETIPage() {
       const pnaeS = calcularPNAE(novasMatriculas, parametros);
       const receitaSimulada = vaafS + vaatA + pnaeS + mdeA + outrosA;
 
-      // Despesa Simulada: Pessoal (Fixo) + Operacional (Redimensionado) + Adicional ETI (Novo)
       const operacionalSimulado = despesaOperacionalBase * ratioAlunos;
       const adicionalETI = novasMatriculasETI * custoExtraEstimado;
       const despesaSimulada = despesaPessoal + operacionalSimulado + adicionalETI;
@@ -224,7 +210,7 @@ export default function SimuladorETIPage() {
         saldoAtual: receitaAtual - despesaAtual,
         saldoSimulacao: receitaSimulada - despesaSimulada,
         novasMatriculasETI,
-        reducaoVagas: selectedSchool.total_matriculas - totalMatriculasEscolaNova,
+        reducaoVagas: totalMatriculasAntes - totalMatriculasEscolaNova,
         vagasParciaisRemovidas: totalRemovidoFisico,
         percentualETIAnterior: selectedSchool.percentual_eti || 0,
         percentualETINovo: totalMatriculasEscolaNova > 0 ? (matriculasDepoisETI / totalMatriculasEscolaNova) * 100 : 0,
@@ -251,15 +237,6 @@ export default function SimuladorETIPage() {
     const novoETIRede = totalETIRedeAtual + resultado.novasMatriculasETI;
     return novaMatriculaRede > 0 ? (novoETIRede / novaMatriculaRede) * 100 : 0;
   }, [resultado, totalMatriculasRedeAtual, totalETIRedeAtual]);
-
-  if (schoolsLoading || profileLoading) {
-    return (
-      <div className="h-[60vh] flex flex-col items-center justify-center gap-4">
-        <Loader2 className="h-10 w-10 animate-spin text-primary opacity-20" />
-        <p className="text-muted-foreground">Configurando simulador municipal...</p>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
