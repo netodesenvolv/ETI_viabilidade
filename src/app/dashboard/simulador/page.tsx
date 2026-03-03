@@ -53,7 +53,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 
@@ -122,7 +122,6 @@ export default function SimuladorETIPage() {
     setTimeout(() => {
       const schoolMatriculas = selectedSchool.matriculas || {};
       
-      // 1. Cálculo do Cenário Atual
       const vaafA = calcularVAAF(schoolMatriculas, parametros);
       const vaatA = calcularVAAT(selectedSchool, parametros, totalMatriculasRedeAtual);
       const pnaeA = calcularPNAE(schoolMatriculas, parametros);
@@ -130,13 +129,11 @@ export default function SimuladorETIPage() {
       const outrosA = calcularOutros(selectedSchool, parametros, totalMatriculasRedeAtual);
       const receitaAtual = vaafA + vaatA + pnaeA + mdeA + outrosA;
 
-      // 2. Lógica de Expansão
       const fatorReducao = logicaExpansao === 'capacidade' ? 2 : 1;
       const alunosParciaisRemover = novasMatriculasETI * fatorReducao;
       
       const novasMatriculas = { ...schoolMatriculas };
       
-      // Simulação: Adiciona em EF Anos Iniciais Integral
       novasMatriculas.ef_ai_integral = (novasMatriculas.ef_ai_integral || 0) + novasMatriculasETI;
       
       let remanescenteRemover = alunosParciaisRemover;
@@ -159,7 +156,6 @@ export default function SimuladorETIPage() {
         total_matriculas: totalMatriculasEscolaNova
       };
 
-      // 3. Cálculo do Cenário Simulado
       const vaafS = calcularVAAF(novasMatriculas, parametros);
       const vaatS = calcularVAAT(escolaSimulada, parametros, totalMatriculasRedeNova);
       const pnaeS = calcularPNAE(novasMatriculas, parametros);
@@ -197,8 +193,8 @@ export default function SimuladorETIPage() {
   };
 
   const chartData = resultado ? [
-    { name: 'Cenário Atual', valor: Math.round(resultado.receitaAtual), fill: 'hsl(var(--muted-foreground))' },
-    { name: 'Cenário Simulado', valor: Math.round(resultado.receitaSimulada), fill: 'hsl(var(--primary))' },
+    { name: 'Receita Atual', valor: Math.round(resultado.receitaAtual), fill: 'hsl(var(--muted-foreground))' },
+    { name: 'Receita Simulada', valor: Math.round(resultado.receitaSimulada), fill: 'hsl(var(--primary))' },
     { name: 'Custo Extra', valor: Math.round(resultado.despesaExtra), fill: 'hsl(var(--destructive))' },
   ] : [];
 
@@ -226,13 +222,23 @@ export default function SimuladorETIPage() {
                    <FileSearch className="h-4 w-4" /> Auditoria de Impacto
                  </Button>
                </DialogTrigger>
-               <DialogContent className="max-w-3xl">
+               <DialogContent className="max-w-4xl">
                  <DialogHeader>
                    <DialogTitle>Auditoria de Viabilidade Financeira</DialogTitle>
                    <DialogDescription>Comparativo detalhado entre os cenários Atual e Simulado.</DialogDescription>
                  </DialogHeader>
-                 <ScrollArea className="max-h-[70vh] pr-4">
+                 <ScrollArea className="max-h-[75vh] pr-4">
                    <div className="space-y-6 py-4">
+                     <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl mb-4">
+                       <h4 className="text-xs font-bold text-blue-800 flex items-center gap-2 mb-2">
+                         <Info className="h-4 w-4" /> NOTA TÉCNICA SOBRE O RATEIO
+                       </h4>
+                       <p className="text-[11px] text-blue-700 leading-relaxed">
+                         Rubricas como <b>VAAT</b> e <b>MDE</b> são distribuídas pro-rata (por cabeça). No modelo 1:2, ao converter 1 vaga integral, a escola deixa de atender 2 alunos parciais. 
+                         Isso causa uma <b>perda líquida de matrículas (CPFs)</b>, o que diminui a fatia proporcional da escola nestes fundos, compensada apenas pelo aumento de peso no VAAf (1,3).
+                       </p>
+                     </div>
+
                      <Table>
                        <TableHeader>
                          <TableRow className="bg-muted/50">
@@ -243,16 +249,16 @@ export default function SimuladorETIPage() {
                          </TableRow>
                        </TableHeader>
                        <TableBody>
-                         <AuditRow label="VAAf (FUNDEB)" valA={resultado.detalhes.atual.vaaf} valS={resultado.detalhes.simulado.vaaf} />
-                         <AuditRow label="VAAT (Complementação)" valA={resultado.detalhes.atual.vaat} valS={resultado.detalhes.simulado.vaat} />
-                         <AuditRow label="PNAE (Merenda)" valA={resultado.detalhes.atual.pnae} valS={resultado.detalhes.simulado.pnae} />
-                         <AuditRow label="MDE (Recursos Próprios)" valA={resultado.detalhes.atual.mde} valS={resultado.detalhes.simulado.mde} />
-                         <AuditRow label="Outros (QSE/PDDE)" valA={resultado.detalhes.atual.outros} valS={resultado.detalhes.simulado.outros} />
+                         <AuditRow label="VAAf (Peso Ponderado)" valA={resultado.detalhes.atual.vaaf} valS={resultado.detalhes.simulado.vaaf} help="Aumenta pelo peso 1.3 do ETI" />
+                         <AuditRow label="VAAT (Pro-rata Matrículas)" valA={resultado.detalhes.atual.vaat} valS={resultado.detalhes.simulado.vaat} help="Cai se o total de alunos diminuir (1:2)" />
+                         <AuditRow label="PNAE (Merenda - Dias/Alunos)" valA={resultado.detalhes.atual.pnae} valS={resultado.detalhes.simulado.pnae} help="Per capita por aluno atendido" />
+                         <AuditRow label="MDE (Recursos Próprios)" valA={resultado.detalhes.atual.mde} valS={resultado.detalhes.simulado.mde} help="Rateio por total de CPFs na rede" />
+                         <AuditRow label="Outros (QSE/PDDE)" valA={resultado.detalhes.atual.outros} valS={resultado.detalhes.simulado.outros} help="Repasse direto por aluno" />
                          <TableRow className="bg-primary/5 font-bold">
                            <TableCell>RECEITA TOTAL ANUAL</TableCell>
                            <TableCell className="text-right">R$ {resultado.receitaAtual.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
                            <TableCell className="text-right">R$ {resultado.receitaSimulada.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
-                           <TableCell className="text-right text-green-600">+ R$ {resultado.incrementoReceitaBruto.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                           <TableCell className="text-right text-green-600 font-mono">+ R$ {resultado.incrementoReceitaBruto.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
                          </TableRow>
                        </TableBody>
                      </Table>
@@ -277,8 +283,8 @@ export default function SimuladorETIPage() {
                            </div>
                            <p className="text-[10px] text-muted-foreground mt-1 leading-tight">
                               {resultado.saldoSimulacao >= 0 
-                                ? "A expansão gera receita suficiente para cobrir os custos extras e ainda bônus fiscal." 
-                                : "A expansão requer aporte adicional do tesouro municipal, pois o custo supera o incremento FUNDEB."}
+                                ? "A expansão gera receita FUNDEB suficiente para cobrir os custos extras e ainda gera saldo para a rede." 
+                                : "A expansão requer aporte adicional do tesouro municipal, pois o custo operacional supera o incremento de receita."}
                            </p>
                         </div>
                      </div>
@@ -329,7 +335,7 @@ export default function SimuladorETIPage() {
                   <Label htmlFor="simples" className="cursor-pointer space-y-1">
                     <div className="font-bold flex items-center gap-2">Conversão Direta (1:1)</div>
                     <p className="text-[10px] text-muted-foreground leading-tight">
-                      Cada 1 novo integral substitui 1 parcial. Indica espaço ocioso ou salas disponíveis.
+                      Cada 1 novo integral substitui 1 parcial. Indica espaço ocioso ou salas disponíveis. O total de alunos não muda.
                     </p>
                   </Label>
                 </div>
@@ -338,7 +344,7 @@ export default function SimuladorETIPage() {
                   <Label htmlFor="capacidade" className="cursor-pointer space-y-1">
                     <div className="font-bold flex items-center gap-2">Impacto Físico (1:2)</div>
                     <p className="text-[10px] text-muted-foreground leading-tight">
-                      Cada 1 novo integral substitui 2 parciais (Manhã e Tarde). Reflete lotação máxima das salas.
+                      Cada 1 novo integral substitui 2 parciais (Manhã e Tarde). Reflete lotação máxima. Reduz o total de CPFs atendidos.
                     </p>
                   </Label>
                 </div>
@@ -401,7 +407,7 @@ export default function SimuladorETIPage() {
             <div className="h-full min-h-[400px] flex flex-col items-center justify-center text-center p-8 border-2 border-dashed rounded-2xl bg-muted/5 space-y-4">
               <Calculator className="h-12 w-12 text-muted-foreground/30" />
               <div className="space-y-1">
-                <h4 className="font-bold">Pronto para Simular</h4>
+                <h4 className="font-bold text-primary">Pronto para Simular</h4>
                 <p className="text-muted-foreground text-xs max-w-[250px]">
                   Configure os parâmetros à esquerda e clique em <b>Calcular</b> para ver o impacto financeiro.
                 </p>
@@ -410,7 +416,7 @@ export default function SimuladorETIPage() {
           ) : isCalculating ? (
             <div className="h-full min-h-[400px] flex flex-col items-center justify-center text-center p-8 space-y-4">
               <Loader2 className="h-10 w-10 animate-spin text-primary" />
-              <p className="text-sm font-medium animate-pulse">Cruzando microdados com fatores FUNDEB 2026...</p>
+              <p className="text-sm font-medium animate-pulse text-primary">Analisando cruzamento de pesos FUNDEB 2026...</p>
             </div>
           ) : resultado && (
             <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
@@ -422,7 +428,7 @@ export default function SimuladorETIPage() {
                       {resultado.incrementoReceitaBruto >= 0 ? <ArrowUpRight className="h-5 w-5" /> : <ArrowDownRight className="h-5 w-5" />}
                       R$ {Math.abs(resultado.incrementoReceitaBruto).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
                     </div>
-                    <p className="text-[10px] text-muted-foreground mt-1">Impacto anual projetado</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">Impacto anual bruto</p>
                   </CardContent>
                 </Card>
 
@@ -432,7 +438,7 @@ export default function SimuladorETIPage() {
                     <div className="text-2xl font-bold text-destructive">
                       R$ {resultado.despesaExtra.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
                     </div>
-                    <p className="text-[10px] text-muted-foreground mt-1">Adicional operacional</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">Gasto operacional adicional</p>
                   </CardContent>
                 </Card>
 
@@ -442,7 +448,7 @@ export default function SimuladorETIPage() {
                     <div className={`text-2xl font-bold ${resultado.saldoSimulacao >= 0 ? 'text-green-700' : 'text-red-700'}`}>
                       R$ {resultado.saldoSimulacao.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
                     </div>
-                    <p className="text-[10px] text-muted-foreground mt-1">{resultado.saldoSimulacao >= 0 ? 'Expansão Sustentável' : 'Requer Aporte Municipal'}</p>
+                    <p className="text-[10px] text-muted-foreground mt-1 font-bold">{resultado.saldoSimulacao >= 0 ? 'Expansão Sustentável' : 'Déficit no Tesouro'}</p>
                   </CardContent>
                 </Card>
               </div>
@@ -478,11 +484,11 @@ export default function SimuladorETIPage() {
                 <Card className="border-accent/20 bg-accent/5">
                   <CardContent className="pt-6 space-y-3">
                     <h4 className="font-headline font-bold text-accent flex items-center gap-2">
-                      <Scale className="h-4 w-4" /> Análise de Viabilidade
+                      <Scale className="h-4 w-4" /> Viabilidade de Infraestrutura
                     </h4>
                     <div className="space-y-2">
                       <div className="flex justify-between text-xs">
-                        <span className="text-muted-foreground">Modelo de Ocupação</span>
+                        <span className="text-muted-foreground">Modelo</span>
                         <span className="font-bold text-accent">{logicaExpansao === 'simples' ? 'Conversão 1:1' : 'Impacto Físico 1:2'}</span>
                       </div>
                       <div className="flex justify-between text-xs">
@@ -490,16 +496,11 @@ export default function SimuladorETIPage() {
                         <span className="font-bold text-accent">+{resultado.novasMatriculasETI} alunos</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-muted-foreground">Vagas Parciais Suprimidas</span>
-                        <span className="font-bold text-orange-600">-{resultado.novasMatriculasETI * (logicaExpansao === 'capacidade' ? 2 : 1)} alunos</span>
+                        <span className="text-muted-foreground">Total Alunos na Unidade</span>
+                        <span className={`font-bold ${resultado.reducaoVagas > 0 ? 'text-destructive' : 'text-primary'}`}>
+                          {resultado.totalMatriculasEscolaNova} ({resultado.reducaoVagas > 0 ? `-${resultado.reducaoVagas}` : 'Sem perdas'})
+                        </span>
                       </div>
-                    </div>
-                    <div className="p-2 bg-accent/10 rounded-lg border border-accent/20">
-                      <p className="text-[10px] text-accent leading-tight font-medium">
-                        {logicaExpansao === 'capacidade' 
-                          ? "O impacto fiscal é maior devido à perda de receitas 'por cabeça' (PNAE/MDE) dos alunos parciais que deixam de ser atendidos."
-                          : "O impacto fiscal é puramente incremental, pois considera que não há redução no total de alunos atendidos pela rede."}
-                      </p>
                     </div>
                   </CardContent>
                 </Card>
@@ -507,27 +508,19 @@ export default function SimuladorETIPage() {
                 <Card className="border-primary/20 bg-primary/5">
                   <CardContent className="pt-6 space-y-3">
                     <h4 className="font-headline font-bold text-primary flex items-center gap-2">
-                      <GraduationCap className="h-4 w-4" /> Jornada Escolar Projetada
+                      <GraduationCap className="h-4 w-4" /> Meta PNE Projetada
                     </h4>
                     <div className="space-y-4">
                        <div className="flex justify-between items-end">
                           <div className="text-center">
-                             <p className="text-[10px] uppercase font-bold text-muted-foreground">ETI Atual</p>
+                             <p className="text-[10px] uppercase font-bold text-muted-foreground">Atual</p>
                              <p className="text-xl font-bold">{resultado.percentualETIAnterior.toFixed(1)}%</p>
                           </div>
                           <div className="h-8 w-px bg-primary/20" />
                           <div className="text-center">
-                             <p className="text-[10px] uppercase font-bold text-primary">ETI Projetado</p>
+                             <p className="text-[10px] uppercase font-bold text-primary">Simulado</p>
                              <p className="text-2xl font-bold text-primary">{resultado.percentualETINovo.toFixed(1)}%</p>
                           </div>
-                       </div>
-                       <div className="p-3 bg-white/50 rounded-lg border border-primary/10 space-y-1">
-                          <p className="text-[10px] text-primary leading-tight font-bold">
-                             Resultado Operacional por Aluno:
-                          </p>
-                          <p className="text-xs font-mono font-bold text-primary">
-                            R$ {(resultado.saldoSimulacao / resultado.novasMatriculasETI).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} / aluno ETI
-                          </p>
                        </div>
                     </div>
                   </CardContent>
@@ -541,16 +534,20 @@ export default function SimuladorETIPage() {
   );
 }
 
-function AuditRow({ label, valA, valS }: { label: string, valA: number, valS: number }) {
+function AuditRow({ label, valA, valS, help }: { label: string, valA: number, valS: number, help?: string }) {
   const diff = valS - valA;
   return (
     <TableRow className="text-xs">
-      <TableCell className="font-medium">{label}</TableCell>
+      <TableCell className="font-medium">
+        <div>{label}</div>
+        {help && <div className="text-[9px] text-muted-foreground font-normal italic">{help}</div>}
+      </TableCell>
       <TableCell className="text-right font-mono">R$ {valA.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
       <TableCell className="text-right font-mono">R$ {valS.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
-      <TableCell className={`text-right font-bold ${diff >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+      <TableCell className={`text-right font-bold font-mono ${diff >= 0 ? 'text-green-600' : 'text-destructive'}`}>
         {diff >= 0 ? '+' : ''}R$ {diff.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
       </TableCell>
     </TableRow>
   )
 }
+
