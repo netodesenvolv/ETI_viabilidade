@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useMemo, useEffect } from "react";
@@ -254,39 +255,94 @@ export default function SimuladorETIPage() {
              <Dialog>
                <DialogTrigger asChild>
                  <Button variant="outline" className="gap-2 border-accent text-accent hover:bg-accent/5">
-                   <FileSearch className="h-4 w-4" /> Auditoria de Receitas
+                   <FileSearch className="h-4 w-4" /> Auditoria de Viabilidade
                  </Button>
                </DialogTrigger>
                <DialogContent className="max-w-4xl">
                  <DialogHeader>
                    <DialogTitle>Auditoria de Viabilidade Financeira</DialogTitle>
-                   <DialogDescription>Comparativo técnico das rubricas de receita (Cenário 2026).</DialogDescription>
+                   <DialogDescription>Comparativo técnico das rubricas de receita e despesas (Cenário 2026).</DialogDescription>
                  </DialogHeader>
                  <ScrollArea className="max-h-[75vh] pr-4">
-                   <div className="space-y-6 py-4">
-                     <Table>
-                       <TableHeader>
-                         <TableRow className="bg-muted/50">
-                           <TableHead>Rubrica de Receita</TableHead>
-                           <TableHead className="text-right">Cenário Atual</TableHead>
-                           <TableHead className="text-right">Cenário Simulado</TableHead>
-                           <TableHead className="text-right">Diferença</TableHead>
-                         </TableRow>
-                       </TableHeader>
-                       <TableBody>
-                         <AuditRow label="VAAf (Repasse Turno)" valA={resultado.detalhes.atual.vaaf} valS={resultado.detalhes.simulado.vaaf} help="Cálculo ponderado por peso do turno (1.30 vs 1.10/1.00)" />
-                         <AuditRow label="PNAE (Merenda)" valA={resultado.detalhes.atual.pnae} valS={resultado.detalhes.simulado.pnae} help="Valor dia integral (R$ 1,57) vs Parcial" />
-                         <AuditRow label="VAAT (Complementação)" valA={resultado.detalhes.atual.vaat} valS={resultado.detalhes.simulado.vaat} />
-                         <AuditRow label="MDE (Recursos Próprios)" valA={resultado.detalhes.atual.mde} valS={resultado.detalhes.simulado.mde} />
-                         <AuditRow label="Outros (QSE/PDDE)" valA={resultado.detalhes.atual.outros} valS={resultado.detalhes.simulado.outros} />
-                         <TableRow className="bg-primary/5 font-bold">
-                           <TableCell>RECEITA TOTAL ANUAL</TableCell>
-                           <TableCell className="text-right">R$ {resultado.receitaAtual.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
-                           <TableCell className="text-right">R$ {resultado.receitaSimulada.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
-                           <TableCell className="text-right text-green-600 font-mono">+ R$ {resultado.incrementoReceitaBruto.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
-                         </TableRow>
-                       </TableBody>
-                     </Table>
+                   <div className="space-y-8 py-4">
+                     <section>
+                       <h4 className="text-sm font-bold text-primary mb-3 flex items-center gap-2">
+                         <TrendingUp className="h-4 w-4" /> Composição de Receitas (Repasses de Turno e Alimentação)
+                       </h4>
+                       <Table>
+                         <TableHeader>
+                           <TableRow className="bg-muted/50">
+                             <TableHead>Rubrica de Receita</TableHead>
+                             <TableHead className="text-right">Cenário Atual</TableHead>
+                             <TableHead className="text-right">Cenário Simulado</TableHead>
+                             <TableHead className="text-right">Diferença</TableHead>
+                           </TableRow>
+                         </TableHeader>
+                         <TableBody>
+                           <AuditRow label="VAAf (Repasse Turno)" valA={resultado.detalhes.atual.vaaf} valS={resultado.detalhes.simulado.vaaf} help="Cálculo ponderado por peso do turno" />
+                           <AuditRow label="PNAE (Merenda)" valA={resultado.detalhes.atual.pnae} valS={resultado.detalhes.simulado.pnae} help="Valor dia integral vs Parcial" />
+                           <AuditRow label="VAAT (Complementação)" valA={resultado.detalhes.atual.vaat} valS={resultado.detalhes.simulado.vaat} />
+                           <AuditRow label="MDE (Recursos Próprios)" valA={resultado.detalhes.atual.mde} valS={resultado.detalhes.simulado.mde} />
+                           <AuditRow label="Outros (QSE/PDDE)" valA={resultado.detalhes.atual.outros} valS={resultado.detalhes.simulado.outros} />
+                           <TableRow className="bg-primary/5 font-bold">
+                             <TableCell>SUBTOTAL RECEITAS</TableCell>
+                             <TableCell className="text-right">R$ {resultado.receitaAtual.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                             <TableCell className="text-right">R$ {resultado.receitaSimulada.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                             <TableCell className="text-right text-green-600 font-mono">+ R$ {resultado.incrementoReceitaBruto.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                           </TableRow>
+                         </TableBody>
+                       </Table>
+                     </section>
+
+                     <Separator />
+
+                     <section>
+                       <h4 className="text-sm font-bold text-destructive mb-3 flex items-center gap-2">
+                         <Calculator className="h-4 w-4" /> Composição de Despesas (Custos Operacionais)
+                       </h4>
+                       <Table>
+                         <TableHeader>
+                           <TableRow className="bg-muted/50">
+                             <TableHead>Categoria de Despesa</TableHead>
+                             <TableHead className="text-right">Cenário Atual</TableHead>
+                             <TableHead className="text-right">Cenário Simulado</TableHead>
+                             <TableHead className="text-right">Diferença</TableHead>
+                           </TableRow>
+                         </TableHeader>
+                         <TableBody>
+                           <AuditRow label="Despesa Fixa / Operacional" valA={resultado.despesaAtual} valS={resultado.despesaAtual} help="Manutenção da base de custos atual" />
+                           <AuditRow 
+                             label="Custo Adicional ETI" 
+                             valA={0} 
+                             valS={resultado.novasMatriculasETI * custoExtraEstimado} 
+                             help={`${resultado.novasMatriculasETI} alunos × R$ ${custoExtraEstimado.toLocaleString('pt-BR')}`}
+                           />
+                           <TableRow className="bg-destructive/5 font-bold">
+                             <TableCell>SUBTOTAL DESPESAS</TableCell>
+                             <TableCell className="text-right">R$ {resultado.despesaAtual.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                             <TableCell className="text-right">R$ {resultado.despesaSimulada.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                             <TableCell className="text-right text-destructive">+ R$ {(resultado.despesaSimulada - resultado.despesaAtual).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                           </TableRow>
+                         </TableBody>
+                       </Table>
+                     </section>
+
+                     <div className="p-6 bg-primary text-white rounded-2xl shadow-inner mt-4">
+                       <div className="flex justify-between items-center text-left">
+                         <div>
+                           <h5 className="text-lg font-bold">Resultado Líquido da Operação (Saldo)</h5>
+                           <p className="text-xs text-white/70">Diferença final entre ganho de repasse e custo incremental</p>
+                         </div>
+                         <div className="text-right">
+                            <div className="text-3xl font-black">
+                              R$ {resultado.saldoSimulacao.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                            </div>
+                            <Badge className={resultado.saldoSimulacao >= resultado.saldoAtual ? "bg-green-400 text-green-900 border-none" : "bg-orange-400 text-orange-900 border-none"}>
+                              {resultado.saldoSimulacao >= resultado.saldoAtual ? "Incremento Positivo" : "Margem Reduzida"}
+                            </Badge>
+                         </div>
+                       </div>
+                     </div>
                    </div>
                  </ScrollArea>
                </DialogContent>
