@@ -34,7 +34,8 @@ import {
   Play,
   FileSearch,
   Building2,
-  CheckCircle2
+  CheckCircle2,
+  ChevronRight
 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -153,7 +154,7 @@ export default function SimuladorETIPage() {
       const totalMatriculasEscolaNova = Object.values(novasMatriculas).reduce((a: any, b: any) => a + (Number(b) || 0), 0);
       const diferencaAlunosEscola = selectedSchool.total_matriculas - totalMatriculasEscolaNova;
 
-      // Lógica solicitada: VAAT, MDE e Outros NÃO MUDAM na simulação financeira do tesouro municipal
+      // Rubricas fixas na simulação de conversão para isolar o ganho de ETI
       const vaafS = calcularVAAF(novasMatriculas, parametros);
       const vaatS = vaatA; 
       const pnaeS = calcularPNAE(novasMatriculas, parametros);
