@@ -2,7 +2,8 @@ import { School, FundingParameters, EnrollmentCounts } from "@/types";
 
 /**
  * 1. FUNDEB VAAF 2026 — Cálculo ponderado por segmento de matrícula.
- * O AEE (F1) agora é tratado como peso ADICIONAL somado à etapa regular.
+ * O AEE (F1) é tratado como peso ADICIONAL somado à etapa regular do aluno.
+ * Exemplo: Aluno Anos Finais Parcial (1.10) + AEE (1.40) = Peso 2.50.
  */
 export function calcularVAAF(matriculas: EnrollmentCounts | undefined, parametros: FundingParameters) {
   if (!matriculas) return 0;
@@ -21,7 +22,8 @@ export function calcularVAAF(matriculas: EnrollmentCounts | undefined, parametro
     (matriculas.ef_af_parcial || 0)      * (fatores.D2 || 1.100) +
     (matriculas.eja_fundamental || 0)    * (fatores.E1 || 0.800) +
     (matriculas.eja_medio || 0)          * (fatores.E2 || 0.850) +
-    (matriculas.especial_aee || 0)       * (fatores.F1 || 1.400); // F1 é ADICIONAL (ex: 1.1 + 1.4 = 2.5)
+    // O especial_aee é somado como um adicional sobre a etapa regular ja calculada acima
+    (matriculas.especial_aee || 0)       * (fatores.F1 || 1.400); 
   
   return soma_ponderada * (vaaf_base || 5962.79);
 }
