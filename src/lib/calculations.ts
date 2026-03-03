@@ -24,16 +24,13 @@ export function calcularVAAF(matriculas: EnrollmentCounts | undefined, parametro
     (matriculas.eja_fundamental || 0)    * (fatores.E1 || 0.800) +
     (matriculas.eja_medio || 0)          * (fatores.E2 || 0.850);
 
-  // Lógica do Adicional AEE (F1) - Dupla Matrícula
+  // Lógica do Adicional AEE (F1) - Dupla Matrícula (Exatamente como na planilha: Fator Etapa + 1.4)
   // Identificamos o segmento predominante da escola para servir de base ao AEE
   const total_infantil = (matriculas.creche_integral || 0) + (matriculas.creche_parcial || 0) + (matriculas.pre_integral || 0) + (matriculas.pre_parcial || 0);
   const total_ai = (matriculas.ef_ai_integral || 0) + (matriculas.ef_ai_parcial || 0);
   const total_af = (matriculas.ef_af_integral || 0) + (matriculas.ef_af_parcial || 0);
   
-  // Fator base padrão: EF Anos Iniciais Parcial (1.00)
   let fatorBaseAEE = fatores.C2 || 1.00; 
-  
-  // Se a escola é predominantemente de Anos Finais, usa 1.10 como base
   if (total_af > total_ai && total_af > total_infantil) {
     fatorBaseAEE = fatores.D2 || 1.10;
   } else if (total_infantil > total_ai && total_infantil > total_af) {
@@ -58,7 +55,7 @@ export function calcularVAAT(escola: School, parametros: FundingParameters, tota
 
 /**
  * 3. PNAE 2026 — Por tipo de matrícula × valor anual (Regra: Valor Dia * 200 dias).
- * CRÍTICO: Não somar especial_aee separadamente, pois o PNAE é por cabeça (CPF).
+ * CRÍTICO: Não somar especial_aee separadamente para não duplicar CPFs.
  */
 export function calcularPNAE(matriculas: EnrollmentCounts | undefined, parametros?: FundingParameters) {
   if (!matriculas) return 0;

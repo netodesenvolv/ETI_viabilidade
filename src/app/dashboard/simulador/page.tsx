@@ -30,7 +30,10 @@ import {
   ArrowUpRight,
   Play,
   FileSearch,
-  ChevronRight
+  ChevronRight,
+  Info,
+  Building2,
+  DollarSign
 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -53,7 +56,9 @@ interface SimulacaoResult {
   receitaAtual: number;
   receitaSimulada: number;
   incrementoReceitaBruto: number;
-  despesaExtra: number;
+  despesaAtual: number;
+  despesaSimulada: number;
+  saldoAtual: number;
   saldoSimulacao: number;
   novasMatriculasETI: number;
   reducaoVagas: number;
@@ -68,7 +73,6 @@ interface SimulacaoResult {
   }
 }
 
-// Baldes físicos (onde o aluno realmente ocupa uma vaga)
 const PHYSICAL_BUCKETS: (keyof EnrollmentCounts)[] = [
   'creche_integral', 'creche_parcial', 'creche_conveniada_int', 'creche_conveniada_par',
   'pre_integral', 'pre_parcial', 'ef_ai_integral', 'ef_ai_parcial', 
@@ -86,6 +90,9 @@ export default function SimuladorETIPage() {
 
   const schoolsRef = useMemo(() => (db && municipioId ? collection(db, 'municipios', municipioId, 'schools') : null), [db, municipioId]);
   const { data: schools, loading: schoolsLoading } = useCollection(schoolsRef);
+
+  const expensesRef = useMemo(() => (db && municipioId ? collection(db, 'municipios', municipioId, 'expenses') : null), [db, municipioId]);
+  const { data: allExpenses } = useCollection(expensesRef);
 
   const paramsRef = useMemo(() => (db && municipioId ? doc(db, 'municipios', municipioId, 'config', 'parameters') : null), [db, municipioId]);
   const { data: customParams } = useDoc(paramsRef);
@@ -137,26 +144,20 @@ export default function SimuladorETIPage() {
       const outrosA = calcularOutros(selectedSchool, parametros, totalMatriculasRedeAtual);
       const receitaAtual = vaafA + vaatA + pnaeA + mdeA + outrosA;
 
+      const schoolExpensesList = (allExpenses || []).filter((e: any) => e.schoolId === selectedSchoolId);
+      const despesaAtual = schoolExpensesList.reduce((acc, e: any) => acc + (e.value || 0), 0);
+
       const fatorReducao = logicaExpansao === 'capacidade' ? 2 : 1;
       const vagasQueDevemSerLiberadas = novasMatriculasETI * fatorReducao;
       
       const novasMatriculas = { ...schoolMatriculas };
       
-      // Categorias parciais que serão removidas para dar lugar ao integral
       const categoriasParciais: (keyof EnrollmentCounts)[] = [
-        'eja_fundamental',
-        'eja_medio',
-        'ef_af_parcial',
-        'ef_ai_parcial',
-        'pre_parcial',
-        'creche_parcial',
-        'creche_conveniada_par',
-        'creche_conveniada_int', 
-        'pre_integral',
-        'creche_integral',
+        'eja_fundamental', 'eja_medio', 'ef_af_parcial', 'ef_ai_parcial', 
+        'pre_parcial', 'creche_parcial', 'creche_conveniada_par',
+        'creche_conveniada_int', 'pre_integral', 'creche_integral'
       ];
 
-      // Adiciona o novo integral
       const targetBucket = selectedSchool.nome.toLowerCase().includes('fundamental') ? 'ef_af_integral' : 'ef_ai_integral';
       novasMatriculas[targetBucket] = (novasMatriculas[targetBucket] || 0) + novasMatriculasETI;
 
@@ -164,7 +165,6 @@ export default function SimuladorETIPage() {
       let totalRemovidoFisico = 0;
       const totalFisicoAntes = PHYSICAL_BUCKETS.reduce((acc, cat) => acc + (Number(schoolMatriculas[cat]) || 0), 0);
 
-      // Remove parciais rigorosamente
       for (const cat of categoriasParciais) {
         if (remanescenteRemover <= 0) break;
         const valorAtual = Number(novasMatriculas[cat] || 0);
@@ -174,10 +174,8 @@ export default function SimuladorETIPage() {
         totalRemovidoFisico += removiveis;
       }
 
-      // LIMPEZA DE MARCADORES (AEE, Rural, etc.)
       if (totalFisicoAntes > 0) {
         const percRemovido = totalRemovidoFisico / totalFisicoAntes;
-        // Se a substituição for total (como 686 -> 343), zera o rastro de marcadores do censo anterior
         if (percRemovido >= 0.98) {
            novasMatriculas.especial_aee = 0;
            novasMatriculas.indigena_quilombola = 0;
@@ -193,16 +191,13 @@ export default function SimuladorETIPage() {
       const vaafS = calcularVAAF(novasMatriculas, parametros);
       const pnaeS = calcularPNAE(novasMatriculas, parametros);
       
-      // VAAT, MDE e Outros são FIXOS na unidade (regra de rateio municipal não muda com turno)
       const vaatS = vaatA; 
       const mdeS = mdeA; 
       const outrosS = outrosA; 
       
       const receitaSimulada = vaafS + vaatS + pnaeS + mdeS + outrosS;
       const incrementoReceitaBruto = receitaSimulada - receitaAtual;
-
-      const despesaExtra = novasMatriculasETI * custoExtraEstimado;
-      const saldoSimulacao = incrementoReceitaBruto - despesaExtra;
+      const despesaSimulada = despesaAtual + (novasMatriculasETI * custoExtraEstimado);
       
       const matriculasDepoisETI = (novasMatriculas.creche_integral || 0) + (novasMatriculas.pre_integral || 0) + (novasMatriculas.ef_ai_integral || 0) + (novasMatriculas.ef_af_integral || 0);
       const percentualETINovo = totalMatriculasEscolaNova > 0 ? (matriculasDepoisETI / totalMatriculasEscolaNova) * 100 : 0;
@@ -211,14 +206,16 @@ export default function SimuladorETIPage() {
         receitaAtual,
         receitaSimulada,
         incrementoReceitaBruto,
-        despesaExtra,
-        saldoSimulacao,
+        despesaAtual,
+        despesaSimulada,
+        saldoAtual: receitaAtual - despesaAtual,
+        saldoSimulacao: receitaSimulada - despesaSimulada,
         novasMatriculasETI,
         reducaoVagas,
         vagasParciaisRemovidas: totalRemovidoFisico,
         percentualETIAnterior: selectedSchool.percentual_eti || 0,
         percentualETINovo,
-        viabilidade: despesaExtra > 0 ? (incrementoReceitaBruto / despesaExtra) * 100 : 100,
+        viabilidade: (receitaSimulada - despesaSimulada) >= (receitaAtual - despesaAtual) ? 100 : 0,
         totalMatriculasEscolaNova,
         detalhes: {
           atual: { vaaf: vaafA, vaat: vaatA, pnae: pnaeA, mde: mdeA, outros: outrosA, total: receitaAtual },
@@ -257,7 +254,7 @@ export default function SimuladorETIPage() {
              <Dialog>
                <DialogTrigger asChild>
                  <Button variant="outline" className="gap-2 border-accent text-accent hover:bg-accent/5">
-                   <FileSearch className="h-4 w-4" /> Auditoria de Impacto
+                   <FileSearch className="h-4 w-4" /> Auditoria de Receitas
                  </Button>
                </DialogTrigger>
                <DialogContent className="max-w-4xl">
@@ -371,31 +368,51 @@ export default function SimuladorETIPage() {
         <div className="lg:col-span-2 space-y-6">
           {resultado && !isCalculating && (
             <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card className="border-none shadow-sm bg-white">
-                  <CardContent className="pt-6">
-                    <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Diferença de Receita</div>
-                    <div className={`text-2xl font-bold flex items-center gap-1 ${resultado.incrementoReceitaBruto >= 0 ? 'text-green-600' : 'text-destructive'}`}>
-                      {resultado.incrementoReceitaBruto >= 0 ? <ArrowUpRight className="h-5 w-5" /> : <ArrowDownRight className="h-5 w-5" />}
-                      R$ {Math.abs(resultado.incrementoReceitaBruto).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card className="border-none shadow-md bg-white">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-bold text-muted-foreground uppercase flex items-center gap-2">
+                      <TrendingUp className="h-4 w-4" /> Impacto na Receita Anual
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex justify-between text-xs">
+                      <span>Receita Atual</span>
+                      <span className="font-medium">R$ {resultado.receitaAtual.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span>Receita Simulada</span>
+                      <span className="font-bold text-green-600">R$ {resultado.receitaSimulada.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</span>
+                    </div>
+                    <div className="pt-2 border-t flex justify-between items-center">
+                      <span className="text-xs font-bold">Ganho Líquido Turno</span>
+                      <Badge className="bg-green-600">+ R$ {resultado.incrementoReceitaBruto.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</Badge>
                     </div>
                   </CardContent>
                 </Card>
 
-                <Card className="border-none shadow-sm bg-white">
-                  <CardContent className="pt-6">
-                    <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Custo Extra Previsto</div>
-                    <div className="text-2xl font-bold text-destructive">
-                      R$ {resultado.despesaExtra.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                <Card className="border-none shadow-md bg-white">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-bold text-muted-foreground uppercase flex items-center gap-2">
+                      <DollarSign className="h-4 w-4" /> Viabilidade Fiscal (Sustentabilidade)
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex justify-between text-xs">
+                      <span>Saldo Atual (Real)</span>
+                      <span className={`font-medium ${resultado.saldoAtual >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                        R$ {resultado.saldoAtual.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                      </span>
                     </div>
-                  </CardContent>
-                </Card>
-
-                <Card className={`border-none shadow-sm ${resultado.saldoSimulacao >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                  <CardContent className="pt-6">
-                    <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Saldo Final Expansão</div>
-                    <div className={`text-2xl font-bold ${resultado.saldoSimulacao >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                      R$ {resultado.saldoSimulacao.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                    <div className="flex justify-between text-xs">
+                      <span>Despesa Projetada</span>
+                      <span className="text-destructive">R$ {resultado.despesaSimulada.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</span>
+                    </div>
+                    <div className="pt-2 border-t flex justify-between items-center">
+                      <span className="text-xs font-bold">Saldo Projetado</span>
+                      <Badge className={resultado.saldoSimulacao >= 0 ? 'bg-green-700' : 'bg-destructive'}>
+                        R$ {resultado.saldoSimulacao.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                      </Badge>
                     </div>
                   </CardContent>
                 </Card>
@@ -444,6 +461,13 @@ export default function SimuladorETIPage() {
                      </div>
                   </div>
                 </Card>
+              </div>
+
+              <div className="p-4 bg-muted/50 rounded-xl border flex gap-3 text-xs italic text-muted-foreground">
+                <Info className="h-4 w-4 shrink-0 mt-0.5" />
+                <p>
+                  <b>Nota Técnica:</b> A despesa projetada considera a despesa atual fixa da unidade mais o custo incremental por aluno em tempo integral (alimentação extra, carga horária e insumos).
+                </p>
               </div>
             </div>
           )}
