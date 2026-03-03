@@ -8,7 +8,7 @@ export const DEFAULT_PARAMETERS: FundingParameters = {
     C1: 1.300, C2: 1.000,
     D1: 1.300, D2: 1.100,
     E1: 0.800, E2: 0.850,
-    F1: 1.400, G1: 1.400, G2: 1.150,
+    F1: 2.500, G1: 1.400, G2: 1.150,
   },
   vaat_total_rede: 850000,
   pnae: {

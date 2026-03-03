@@ -21,7 +21,7 @@ export function calcularVAAF(matriculas: EnrollmentCounts | undefined, parametro
     (matriculas.ef_af_parcial || 0)      * (fatores.D2 || 1.100) +
     (matriculas.eja_fundamental || 0)    * (fatores.E1 || 0.800) +
     (matriculas.eja_medio || 0)          * (fatores.E2 || 0.850) +
-    (matriculas.especial_aee || 0)       * (fatores.F1 || 2.400);
+    (matriculas.especial_aee || 0)       * (fatores.F1 || 2.500);
   
   return soma_ponderada * (vaaf_base || 5962.79);
 }
