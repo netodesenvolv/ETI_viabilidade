@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useMemo, useEffect } from "react";
@@ -68,6 +69,13 @@ interface SimulacaoResult {
   }
 }
 
+// Baldes físicos (onde o aluno realmente ocupa uma vaga)
+const PHYSICAL_BUCKETS: (keyof EnrollmentCounts)[] = [
+  'creche_integral', 'creche_parcial', 'creche_conveniada_int', 'creche_conveniada_par',
+  'pre_integral', 'pre_parcial', 'ef_ai_integral', 'ef_ai_parcial', 
+  'ef_af_integral', 'ef_af_parcial', 'eja_fundamental', 'eja_medio'
+];
+
 export default function SimuladorETIPage() {
   const auth = useAuth();
   const db = useFirestore();
@@ -134,8 +142,8 @@ export default function SimuladorETIPage() {
       const vagasQueDevemSerLiberadas = novasMatriculasETI * fatorReducao;
       
       const novasMatriculas = { ...schoolMatriculas };
-      novasMatriculas.ef_ai_integral = (novasMatriculas.ef_ai_integral || 0) + novasMatriculasETI;
       
+      // Categorias parciais que serão removidas para dar lugar ao integral
       const categoriasParciais: (keyof EnrollmentCounts)[] = [
         'eja_fundamental',
         'eja_medio',
@@ -144,11 +152,19 @@ export default function SimuladorETIPage() {
         'pre_parcial',
         'creche_parcial',
         'creche_conveniada_par',
-        'especial_aee',
+        'creche_conveniada_int', // Removendo também integrais se necessário para conversão total
+        'pre_integral',
+        'creche_integral',
       ];
 
+      // Adiciona o novo integral (usamos Anos Finais como padrão de simulação se não houver contexto)
+      const targetBucket = selectedSchool.nome.toLowerCase().includes('fundamental') ? 'ef_af_integral' : 'ef_ai_integral';
+      novasMatriculas[targetBucket] = (novasMatriculas[targetBucket] || 0) + novasMatriculasETI;
+
       let remanescenteRemover = vagasQueDevemSerLiberadas;
-      let totalRemovido = 0;
+      let totalRemovidoFisico = 0;
+
+      const totalFisicoAntes = PHYSICAL_BUCKETS.reduce((acc, cat) => acc + (Number(schoolMatriculas[cat]) || 0), 0);
 
       for (const cat of categoriasParciais) {
         if (remanescenteRemover <= 0) break;
@@ -156,10 +172,24 @@ export default function SimuladorETIPage() {
         const removiveis = Math.min(remanescenteRemover, valorAtual);
         (novasMatriculas[cat] as any) = valorAtual - removiveis;
         remanescenteRemover -= removiveis;
-        totalRemovido += removiveis;
+        totalRemovidoFisico += removiveis;
       }
 
-      const totalMatriculasEscolaNova = Object.values(novasMatriculas).reduce((a: any, b: any) => a + (Number(b) || 0), 0);
+      // Se a escola foi totalmente limpa de parciais, limpamos o marcador AEE proporcionalmente
+      // (Se removeu 100% dos parciais, removemos o marcador AEE desses parciais)
+      if (totalFisicoAntes > 0) {
+        const percRemovido = totalRemovidoFisico / totalFisicoAntes;
+        if (percRemovido >= 0.99) {
+           // Se converteu a escola inteira, os alunos AEE agora são todos ETI
+           // Mantemos o número de AEE mas eles agora rodam sob a lógica ETI
+        } else {
+           // Redução proporcional de marcadores se a escola apenas diminuiu
+           novasMatriculas.especial_aee = Math.max(0, Math.round(novasMatriculas.especial_aee * (1 - percRemovido)));
+        }
+      }
+
+      // Headcount físico NÃO soma especial_aee (Double Enrollment)
+      const totalMatriculasEscolaNova = PHYSICAL_BUCKETS.reduce((acc, cat) => acc + (Number(novasMatriculas[cat]) || 0), 0);
       const reducaoVagas = selectedSchool.total_matriculas - totalMatriculasEscolaNova;
 
       const vaafS = calcularVAAF(novasMatriculas, parametros);
@@ -186,7 +216,7 @@ export default function SimuladorETIPage() {
         saldoSimulacao,
         novasMatriculasETI,
         reducaoVagas,
-        vagasParciaisRemovidas: totalRemovido,
+        vagasParciaisRemovidas: totalRemovidoFisico,
         percentualETIAnterior: selectedSchool.percentual_eti || 0,
         percentualETINovo,
         viabilidade: despesaExtra > 0 ? (incrementoReceitaBruto / despesaExtra) * 100 : 100,
@@ -206,12 +236,6 @@ export default function SimuladorETIPage() {
     const novoETIRede = totalETIRedeAtual + resultado.novasMatriculasETI;
     return novaMatriculaRede > 0 ? (novoETIRede / novaMatriculaRede) * 100 : 0;
   }, [resultado, totalMatriculasRedeAtual, totalETIRedeAtual]);
-
-  const chartData = resultado ? [
-    { name: 'Receita Atual', valor: Math.round(resultado.receitaAtual), fill: 'hsl(var(--muted-foreground))' },
-    { name: 'Receita Simulada', valor: Math.round(resultado.receitaSimulada), fill: 'hsl(var(--primary))' },
-    { name: 'Custo Extra', valor: Math.round(resultado.despesaExtra), fill: 'hsl(var(--destructive))' },
-  ] : [];
 
   if (schoolsLoading || profileLoading) {
     return (
@@ -254,8 +278,8 @@ export default function SimuladorETIPage() {
                          </TableRow>
                        </TableHeader>
                        <TableBody>
-                         <AuditRow label="VAAf (Ponderação Turno)" valA={resultado.detalhes.atual.vaaf} valS={resultado.detalhes.simulado.vaaf} help="Varia pelo fator ETI e adicional AEE" />
-                         <AuditRow label="PNAE (Alimentação)" valA={resultado.detalhes.atual.pnae} valS={resultado.detalhes.simulado.pnae} help="Varia pelo valor integral" />
+                         <AuditRow label="VAAf (Repasse Turno)" valA={resultado.detalhes.atual.vaaf} valS={resultado.detalhes.simulado.vaaf} help="Cálculo ponderado por peso do turno (1.30 vs 1.10/1.00)" />
+                         <AuditRow label="PNAE (Merenda)" valA={resultado.detalhes.atual.pnae} valS={resultado.detalhes.simulado.pnae} help="Valor dia integral (R$ 1,57) vs Parcial" />
                          <AuditRow label="VAAT (Complementação)" valA={resultado.detalhes.atual.vaat} valS={resultado.detalhes.simulado.vaat} />
                          <AuditRow label="MDE (Recursos Próprios)" valA={resultado.detalhes.atual.mde} valS={resultado.detalhes.simulado.mde} />
                          <AuditRow label="Outros (QSE/PDDE)" valA={resultado.detalhes.atual.outros} valS={resultado.detalhes.simulado.outros} />
