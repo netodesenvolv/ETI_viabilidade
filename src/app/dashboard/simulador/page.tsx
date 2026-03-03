@@ -32,9 +32,10 @@ import {
   ArrowDownRight, 
   ArrowUpRight,
   Play,
-  FileSearch
+  FileSearch,
+  Building2,
+  CheckCircle2
 } from "lucide-react";
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useAuth, useFirestore, useUser, useDoc, useCollection } from "@/firebase";
@@ -101,6 +102,14 @@ export default function SimuladorETIPage() {
     municipalSchools.reduce((acc, s: any) => acc + (s.total_matriculas || 0), 0)
   , [municipalSchools]);
 
+  const totalETIRedeAtual = useMemo(() => 
+    municipalSchools.reduce((acc, s: any) => acc + (s.total_eti || 0), 0)
+  , [municipalSchools]);
+
+  const metaPNERedeAtual = useMemo(() => 
+    totalMatriculasRedeAtual > 0 ? (totalETIRedeAtual / totalMatriculasRedeAtual) * 100 : 0
+  , [totalETIRedeAtual, totalMatriculasRedeAtual]);
+
   useEffect(() => {
     if (municipalSchools.length > 0 && !selectedSchoolId) {
       setSelectedSchoolId(municipalSchools[0].id);
@@ -144,7 +153,7 @@ export default function SimuladorETIPage() {
       const totalMatriculasEscolaNova = Object.values(novasMatriculas).reduce((a: any, b: any) => a + (Number(b) || 0), 0);
       const diferencaAlunosEscola = selectedSchool.total_matriculas - totalMatriculasEscolaNova;
 
-      // Lógica solicitada: VAAT, MDE e Outros NÃO MUDAM na simulação
+      // Lógica solicitada: VAAT, MDE e Outros NÃO MUDAM na simulação financeira do tesouro municipal
       const vaafS = calcularVAAF(novasMatriculas, parametros);
       const vaatS = vaatA; 
       const pnaeS = calcularPNAE(novasMatriculas, parametros);
@@ -180,6 +189,13 @@ export default function SimuladorETIPage() {
       setIsCalculating(false);
     }, 800);
   };
+
+  const networkMetaSimulada = useMemo(() => {
+    if (!resultado) return 0;
+    const novaMatriculaRede = totalMatriculasRedeAtual - resultado.reducaoVagas;
+    const novoETIRede = totalETIRedeAtual + resultado.novasMatriculasETI;
+    return novaMatriculaRede > 0 ? (novoETIRede / novaMatriculaRede) * 100 : 0;
+  }, [resultado, totalMatriculasRedeAtual, totalETIRedeAtual]);
 
   const chartData = resultado ? [
     { name: 'Receita Atual', valor: Math.round(resultado.receitaAtual), fill: 'hsl(var(--muted-foreground))' },
@@ -228,11 +244,11 @@ export default function SimuladorETIPage() {
                          </TableRow>
                        </TableHeader>
                        <TableBody>
-                         <AuditRow label="VAAf (Ponderação Turno)" valA={resultado.detalhes.atual.vaaf} valS={resultado.detalhes.simulado.vaaf} help="Varia pelo fator ETI (1.30)" />
-                         <AuditRow label="PNAE (Per Capita Alimentação)" valA={resultado.detalhes.atual.pnae} valS={resultado.detalhes.simulado.pnae} help="Varia pelo valor integral (R$ 1.57)" />
-                         <AuditRow label="VAAT (Complementação)" valA={resultado.detalhes.atual.vaat} valS={resultado.detalhes.simulado.vaat} help="Valor fixo por unidade" />
-                         <AuditRow label="MDE (Recursos Próprios)" valA={resultado.detalhes.atual.mde} valS={resultado.detalhes.simulado.mde} help="Valor fixo municipal" />
-                         <AuditRow label="Outros (QSE/PDDE)" valA={resultado.detalhes.atual.outros} valS={resultado.detalhes.simulado.outros} help="Valor fixo anual" />
+                         <AuditRow label="VAAf (Ponderação Turno)" valA={resultado.detalhes.atual.vaaf} valS={resultado.detalhes.simulado.vaaf} help="Varia pelo fator ETI (Ex: 1.30)" />
+                         <AuditRow label="PNAE (Alimentação)" valA={resultado.detalhes.atual.pnae} valS={resultado.detalhes.simulado.pnae} help="Varia pelo valor integral (R$ 1.57)" />
+                         <AuditRow label="VAAT (Complementação)" valA={resultado.detalhes.atual.vaat} valS={resultado.detalhes.simulado.vaat} />
+                         <AuditRow label="MDE (Recursos Próprios)" valA={resultado.detalhes.atual.mde} valS={resultado.detalhes.simulado.mde} />
+                         <AuditRow label="Outros (QSE/PDDE)" valA={resultado.detalhes.atual.outros} valS={resultado.detalhes.simulado.outros} />
                          <TableRow className="bg-primary/5 font-bold">
                            <TableCell>RECEITA TOTAL ANUAL</TableCell>
                            <TableCell className="text-right">R$ {resultado.receitaAtual.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
@@ -485,22 +501,44 @@ export default function SimuladorETIPage() {
                 </Card>
 
                 <Card className="border-primary/20 bg-primary/5">
-                  <CardContent className="pt-6 space-y-3">
-                    <h4 className="font-headline font-bold text-primary flex items-center gap-2">
-                      <GraduationCap className="h-4 w-4" /> Meta PNE Projetada
+                  <CardContent className="pt-6 space-y-4">
+                    <h4 className="font-headline font-bold text-primary flex items-center gap-2 border-b pb-2">
+                      <GraduationCap className="h-4 w-4" /> Impacto Meta PNE (Integral)
                     </h4>
-                    <div className="space-y-4">
-                       <div className="flex justify-between items-end">
-                          <div className="text-center">
-                             <p className="text-[10px] uppercase font-bold text-muted-foreground">Atual</p>
-                             <p className="text-xl font-bold">{resultado.percentualETIAnterior.toFixed(1)}%</p>
-                          </div>
-                          <div className="h-8 w-px bg-primary/20" />
-                          <div className="text-center">
-                             <p className="text-[10px] uppercase font-bold text-primary">Simulado</p>
-                             <p className="text-2xl font-bold text-primary">{resultado.percentualETINovo.toFixed(1)}%</p>
+                    <div className="grid grid-cols-2 gap-4">
+                       <div className="space-y-2">
+                          <p className="text-[10px] uppercase font-bold text-muted-foreground">Nesta Escola</p>
+                          <div className="flex items-center gap-3">
+                            <div className="text-sm">
+                              <p className="text-[8px] text-muted-foreground">Atual</p>
+                              <p className="font-bold">{resultado.percentualETIAnterior.toFixed(1)}%</p>
+                            </div>
+                            <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                            <div className="text-sm">
+                              <p className="text-[8px] text-primary">Simulado</p>
+                              <p className="font-bold text-primary">{resultado.percentualETINovo.toFixed(1)}%</p>
+                            </div>
                           </div>
                        </div>
+                       <div className="space-y-2 border-l pl-4">
+                          <p className="text-[10px] uppercase font-bold text-muted-foreground">Na Rede Municipal</p>
+                          <div className="flex items-center gap-3">
+                            <div className="text-sm">
+                              <p className="text-[8px] text-muted-foreground">Atual</p>
+                              <p className="font-bold">{metaPNERedeAtual.toFixed(1)}%</p>
+                            </div>
+                            <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                            <div className="text-sm">
+                              <p className="text-[8px] text-primary">Simulado</p>
+                              <p className="font-bold text-primary">{networkMetaSimulada.toFixed(1)}%</p>
+                            </div>
+                          </div>
+                       </div>
+                    </div>
+                    <div className="pt-2">
+                       <p className="text-[9px] text-muted-foreground italic leading-tight">
+                         Meta 6 do PNE: Mínimo 25% de matrículas da rede pública em tempo integral.
+                       </p>
                     </div>
                   </CardContent>
                 </Card>
