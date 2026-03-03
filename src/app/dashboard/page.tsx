@@ -449,7 +449,7 @@ export default function DashboardPage() {
 
                                   <section className="space-y-3">
                                     <h4 className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-2">
-                                      <TrendingUp className="h-3 w-3" /> Composição de Receitas (2026)
+                                      <TrendingUp className="h-3 w-3" /> Composição de Receitas (VAAf {parametros.fatores.C1.toFixed(2)} / {parametros.fatores.D2.toFixed(2)})
                                     </h4>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                       <RevenueDetailItem label="FUNDEB VAAf" value={school.vaaf} />

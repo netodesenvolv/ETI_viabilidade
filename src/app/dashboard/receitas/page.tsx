@@ -177,7 +177,7 @@ export default function ReceitasPage() {
                             <ScrollArea className="max-h-[60vh] pr-4">
                               <div className="space-y-6 py-4">
                                 <section>
-                                  <h4 className="text-xs font-bold text-muted-foreground uppercase mb-3">Educação Infantil (VAAf 1.55 / 1.25)</h4>
+                                  <h4 className="text-xs font-bold text-muted-foreground uppercase mb-3">Educação Infantil (VAAf {parametros.fatores.A1.toFixed(2)} / {parametros.fatores.A2.toFixed(2)})</h4>
                                   <div className="grid grid-cols-2 gap-4">
                                     <DataField label="Creche Integral" value={school.matriculas?.creche_integral} />
                                     <DataField label="Creche Parcial" value={school.matriculas?.creche_parcial} />
@@ -187,7 +187,7 @@ export default function ReceitasPage() {
                                 </section>
                                 <Separator />
                                 <section>
-                                  <h4 className="text-xs font-bold text-muted-foreground uppercase mb-3">Ensino Fundamental (VAAf 1.30 / 1.00)</h4>
+                                  <h4 className="text-xs font-bold text-muted-foreground uppercase mb-3">Ensino Fundamental (VAAf {parametros.fatores.C1.toFixed(2)} / {parametros.fatores.D2.toFixed(2)})</h4>
                                   <div className="grid grid-cols-2 gap-4">
                                     <DataField label="Anos Iniciais Integral" value={school.matriculas?.ef_ai_integral} />
                                     <DataField label="Anos Iniciais Parcial" value={school.matriculas?.ef_ai_parcial} />
@@ -197,7 +197,7 @@ export default function ReceitasPage() {
                                 </section>
                                 <Separator />
                                 <section>
-                                  <h4 className="text-xs font-bold text-muted-foreground uppercase mb-3">EJA e Inclusão (VAAf 0.80 / 2.40)</h4>
+                                  <h4 className="text-xs font-bold text-muted-foreground uppercase mb-3">EJA e Inclusão (VAAf {parametros.fatores.E1.toFixed(2)} / {parametros.fatores.F1.toFixed(2)})</h4>
                                   <div className="grid grid-cols-2 gap-4">
                                     <DataField label="EJA" value={school.matriculas?.eja_fundamental} />
                                     <DataField label="Educação Especial (AEE)" value={school.matriculas?.especial_aee} />
