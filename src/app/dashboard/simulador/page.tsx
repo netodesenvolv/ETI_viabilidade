@@ -20,8 +20,8 @@ import {
   Legend
 } from "recharts";
 import { DEFAULT_PARAMETERS } from "@/lib/constants";
-import { calcularVAAF, calcularVAAT, calcularPNAE } from "@/lib/calculations";
-import { GraduationCap, TrendingUp, DollarSign, Users, AlertTriangle, CheckCircle2, Calculator, Info, Loader2, RefreshCcw, Layers, Scale } from "lucide-react";
+import { calcularVAAF, calcularVAAT, calcularPNAE, calcularMDE, calcularOutros } from "@/lib/calculations";
+import { GraduationCap, TrendingUp, DollarSign, Users, AlertTriangle, CheckCircle2, Calculator, Info, Loader2, RefreshCcw, Layers, Scale, ArrowDownRight, ArrowUpRight } from "lucide-react";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -49,11 +49,14 @@ export default function SimuladorETIPage() {
   const [custoExtraEstimado, setCustoExtraEstimado] = useState(4500); 
   const [logicaExpansao, setLogicaExpansao] = useState<"simples" | "capacidade">("simples");
 
-  // FILTRO CENTRAL: Apenas escolas municipais para simulação
   const municipalSchools = useMemo(() => {
     if (!schools) return [];
     return schools.filter(s => String(s.tp_dependencia) === '3');
   }, [schools]);
+
+  const totalMatriculasRedeAtual = useMemo(() => 
+    municipalSchools.reduce((acc, s: any) => acc + (s.total_matriculas || 0), 0)
+  , [municipalSchools]);
 
   useEffect(() => {
     if (municipalSchools.length > 0 && !selectedSchoolId) {
@@ -68,61 +71,67 @@ export default function SimuladorETIPage() {
   const simulacao = useMemo(() => {
     if (!selectedSchool) return null;
 
-    const schoolMatriculas = selectedSchool.matriculas || {
-      creche_integral: 0, creche_parcial: 0, creche_conveniada_int: 0, creche_conveniada_par: 0,
-      pre_integral: 0, pre_parcial: 0, ef_ai_integral: 0, ef_ai_parcial: 0, ef_af_integral: 0, ef_af_parcial: 0,
-      eja_fundamental: 0, eja_medio: 0, especial_aee: 0, indigena_quilombola: 0, campo_rural: 0
-    };
-
-    const vaafAtual = calcularVAAF(schoolMatriculas, parametros);
-    const pnaeAtual = calcularPNAE(schoolMatriculas, parametros);
-    const receitaAtual = vaafAtual + pnaeAtual;
-
-    // LÓGICA DE CONVERSÃO:
-    // Se logica === 'capacidade', cada 1 integral remove 2 parciais (ocupa os 2 turnos)
-    const fatorReducao = logicaExpansao === 'capacidade' ? 2 : 1;
+    const schoolMatriculas = selectedSchool.matriculas || {};
     
+    // Cálculo do Cenário Atual
+    const vaafA = calcularVAAF(schoolMatriculas, parametros);
+    const vaatA = calcularVAAT(selectedSchool, parametros, totalMatriculasRedeAtual);
+    const pnaeA = calcularPNAE(schoolMatriculas, parametros);
+    const mdeA = calcularMDE(selectedSchool, parametros, totalMatriculasRedeAtual);
+    const outrosA = calcularOutros(selectedSchool, parametros, totalMatriculasRedeAtual);
+    const receitaAtual = vaafA + vaatA + pnaeA + mdeA + outrosA;
+
+    // Lógica de Expansão
+    const fatorReducao = logicaExpansao === 'capacidade' ? 2 : 1;
+    const matriculasParciaisDisponiveis = (schoolMatriculas.ef_ai_parcial || 0) + (schoolMatriculas.ef_af_parcial || 0);
+    
+    // Ajuste de matrículas
     const novasMatriculas = {
       ...schoolMatriculas,
       ef_ai_integral: (schoolMatriculas.ef_ai_integral || 0) + novasMatriculasETI,
       ef_ai_parcial: Math.max(0, (schoolMatriculas.ef_ai_parcial || 0) - (novasMatriculasETI * fatorReducao))
     };
 
-    const vaafSimulado = calcularVAAF(novasMatriculas, parametros);
-    const pnaeSimulado = calcularPNAE(novasMatriculas, parametros);
+    const totalMatriculasEscolaNova = Object.values(novasMatriculas).reduce((a: any, b: any) => a + (b || 0), 0);
+    const diferencaAlunosEscola = selectedSchool.total_matriculas - totalMatriculasEscolaNova;
+    const totalMatriculasRedeNova = totalMatriculasRedeAtual - diferencaAlunosEscola;
+
+    // Objeto de escola simulada para funções de cálculo
+    const escolaSimulada = {
+      ...selectedSchool,
+      total_matriculas: totalMatriculasEscolaNova
+    };
+
+    // Cálculo do Cenário Simulado
+    const vaafS = calcularVAAF(novasMatriculas, parametros);
+    const vaatS = calcularVAAT(escolaSimulada, parametros, totalMatriculasRedeNova);
+    const pnaeS = calcularPNAE(novasMatriculas, parametros);
+    const mdeS = calcularMDE(escolaSimulada, parametros, totalMatriculasRedeNova);
+    const outrosS = calcularOutros(escolaSimulada, parametros, totalMatriculasRedeNova);
     
-    const receitaSimulada = vaafSimulado + pnaeSimulado;
-    const incrementoReceita = receitaSimulada - receitaAtual;
+    const receitaSimulada = vaafS + vaatS + pnaeS + mdeS + outrosS;
+    const incrementoReceitaBruto = receitaSimulada - receitaAtual;
 
     const despesaExtra = novasMatriculasETI * custoExtraEstimado;
-    const saldoSimulacao = incrementoReceita - despesaExtra;
-    const viabilidade = despesaExtra > 0 ? (incrementoReceita / despesaExtra) * 100 : 100;
-
-    const matriculasAntes = totalMatriculas(schoolMatriculas);
-    const matriculasDepois = totalMatriculas(novasMatriculas);
-    const reducaoVagas = matriculasAntes - matriculasDepois;
+    const saldoSimulacao = incrementoReceitaBruto - despesaExtra;
+    
+    const matriculasDepoisETI = (novasMatriculas.creche_integral || 0) + (novasMatriculas.pre_integral || 0) + (novasMatriculas.ef_ai_integral || 0) + (novasMatriculas.ef_af_integral || 0);
+    const percentualETINovo = totalMatriculasEscolaNova > 0 ? (matriculasDepoisETI / totalMatriculasEscolaNova) * 100 : 0;
 
     return {
       receitaAtual,
       receitaSimulada,
-      incrementoReceita,
+      incrementoReceitaBruto,
       despesaExtra,
       saldoSimulacao,
-      viabilidade,
       novasMatriculasETI,
-      reducaoVagas,
+      reducaoVagas: diferencaAlunosEscola,
       percentualETIAnterior: selectedSchool.percentual_eti || 0,
-      percentualETINovo: matriculasDepois > 0 ? (totalETI(novasMatriculas) / matriculasDepois) * 100 : 0
+      percentualETINovo,
+      viabilidade: despesaExtra > 0 ? (incrementoReceitaBruto / despesaExtra) * 100 : 100,
+      perdaFiscalPorVaga: logicaExpansao === 'capacidade' ? (receitaAtual / selectedSchool.total_matriculas) : 0
     };
-  }, [selectedSchool, novasMatriculasETI, custoExtraEstimado, parametros, logicaExpansao]);
-
-  function totalMatriculas(m: any) {
-    return Object.values(m).reduce((a: any, b: any) => a + (b || 0), 0);
-  }
-
-  function totalETI(m: any) {
-    return (m.creche_integral || 0) + (m.pre_integral || 0) + (m.ef_ai_integral || 0) + (m.ef_af_integral || 0);
-  }
+  }, [selectedSchool, novasMatriculasETI, custoExtraEstimado, parametros, logicaExpansao, totalMatriculasRedeAtual]);
 
   if (schoolsLoading || profileLoading) {
     return (
@@ -133,24 +142,9 @@ export default function SimuladorETIPage() {
     );
   }
 
-  if (municipalSchools.length === 0) {
-    return (
-      <div className="h-[60vh] flex flex-col items-center justify-center text-center p-8 space-y-4">
-        <AlertTriangle className="h-12 w-12 text-muted-foreground/30" />
-        <h3 className="text-xl font-bold">Nenhuma escola municipal disponível</h3>
-        <p className="text-muted-foreground max-w-xs">
-          A simulação de expansão é restrita à Rede Municipal (Dependência 3).
-        </p>
-        <Button asChild variant="outline">
-          <a href="/dashboard/censo">Ir para Censo Escolar</a>
-        </Button>
-      </div>
-    );
-  }
-
   const chartData = simulacao ? [
-    { name: 'Atual', valor: Math.round(simulacao.receitaAtual) },
-    { name: 'Simulado (Receita)', valor: Math.round(simulacao.receitaSimulada) },
+    { name: 'Receita Atual', valor: Math.round(simulacao.receitaAtual) },
+    { name: 'Receita Nova', valor: Math.round(simulacao.receitaSimulada) },
     { name: 'Custo Extra', valor: Math.round(simulacao.despesaExtra) },
   ] : [];
 
@@ -159,10 +153,10 @@ export default function SimuladorETIPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-headline font-bold text-primary">Simulador de Expansão: {profile?.municipio}</h2>
-          <p className="text-muted-foreground">Projeções de impacto fiscal e físico para 2026</p>
+          <p className="text-muted-foreground">Projeções de impacto fiscal e físico para o exercício 2026</p>
         </div>
         <Badge variant="outline" className="h-fit py-1 px-3 border-accent/30 text-accent bg-accent/5 gap-2">
-          <RefreshCcw className="h-3 w-3" /> Simulação de Rede
+          <RefreshCcw className="h-3 w-3" /> Simulação de Impacto
         </Badge>
       </div>
 
@@ -171,16 +165,16 @@ export default function SimuladorETIPage() {
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
               <Calculator className="h-5 w-5 text-primary" />
-              Parâmetros de Simulação
+              Parâmetros da Expansão
             </CardTitle>
-            <CardDescription>Configure as variáveis e o modelo de ocupação</CardDescription>
+            <CardDescription>Defina as variáveis para análise de viabilidade</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-2">
-              <Label>Unidade Escolar Municipal</Label>
+              <Label>Unidade Municipal Alvo</Label>
               <Select value={selectedSchoolId} onValueChange={setSelectedSchoolId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecione a escola municipal" />
+                  <SelectValue placeholder="Selecione a escola" />
                 </SelectTrigger>
                 <SelectContent>
                   {municipalSchools.map((s: any) => (
@@ -191,7 +185,7 @@ export default function SimuladorETIPage() {
             </div>
 
             <div className="space-y-4 pt-4 border-t">
-              <Label className="text-xs font-bold uppercase text-muted-foreground">Modelo de Ocupação Física</Label>
+              <Label className="text-xs font-bold uppercase text-muted-foreground">Modelo de Ocupação da Infraestrutura</Label>
               <RadioGroup 
                 value={logicaExpansao} 
                 onValueChange={(v: any) => setLogicaExpansao(v)}
@@ -202,16 +196,16 @@ export default function SimuladorETIPage() {
                   <Label htmlFor="simples" className="cursor-pointer space-y-1">
                     <div className="font-bold flex items-center gap-2">Conversão Direta (1:1)</div>
                     <p className="text-[10px] text-muted-foreground leading-tight">
-                      Cada 1 novo aluno integral substitui 1 aluno parcial. Assume que a escola possui salas extras ou capacidade ociosa nos turnos.
+                      Cada 1 novo aluno integral substitui 1 parcial. Indica que há espaço físico ocioso ou salas disponíveis.
                     </p>
                   </Label>
                 </div>
                 <div className="flex items-start space-x-3 p-3 border rounded-xl hover:bg-muted/50 cursor-pointer transition-colors">
                   <RadioGroupItem value="capacidade" id="capacidade" className="mt-1" />
                   <Label htmlFor="capacidade" className="cursor-pointer space-y-1">
-                    <div className="font-bold flex items-center gap-2">Conversão por Turno (1:2)</div>
+                    <div className="font-bold flex items-center gap-2">Impacto Físico (1:2)</div>
                     <p className="text-[10px] text-muted-foreground leading-tight">
-                      Cada 1 novo aluno integral substitui 2 alunos parciais (Manhã e Tarde). Reflete a realidade de ocupação total do espaço físico.
+                      Cada 1 novo integral substitui 2 parciais (Manhã e Tarde). Reflete a lotação máxima das salas de aula.
                     </p>
                   </Label>
                 </div>
@@ -220,7 +214,7 @@ export default function SimuladorETIPage() {
 
             <div className="space-y-4 pt-4 border-t">
               <div className="flex justify-between items-center">
-                <Label>Novas Matrículas ETI</Label>
+                <Label>Aumento de Matrículas ETI</Label>
                 <Input 
                   type="number"
                   className="w-20 h-8 text-right font-bold"
@@ -231,24 +225,27 @@ export default function SimuladorETIPage() {
               <Slider 
                 value={[novasMatriculasETI]} 
                 onValueChange={(v) => setNovasMatriculasETI(v[0])} 
-                max={Math.max(100, novasMatriculasETI + 50)} 
+                max={100} 
                 step={1} 
               />
               {logicaExpansao === 'capacidade' && (
-                <p className="text-[10px] text-orange-600 font-medium flex items-center gap-1">
-                  <Scale className="h-3 w-3" /> Impacto: Redução de {novasMatriculasETI * 2} vagas parciais.
-                </p>
+                <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg flex gap-2 items-start">
+                  <AlertTriangle className="h-4 w-4 text-orange-600 shrink-0 mt-0.5" />
+                  <p className="text-[10px] text-orange-800 leading-tight">
+                    <b>Atenção:</b> Neste modelo, você deixará de atender <b>{novasMatriculasETI * 2}</b> alunos parciais para atender <b>{novasMatriculasETI}</b> integrais.
+                  </p>
+                </div>
               )}
             </div>
 
             <div className="space-y-4 pt-4 border-t">
               <div className="flex justify-between items-center">
-                <Label>Custo Extra Anual / Aluno</Label>
+                <Label>Custo Adicional ETI / Aluno</Label>
                 <div className="flex items-center gap-1">
                   <span className="text-xs text-muted-foreground">R$</span>
                   <Input 
                     type="number"
-                    className="w-24 h-8 text-right font-bold text-orange-600"
+                    className="w-24 h-8 text-right font-bold text-primary"
                     value={custoExtraEstimado}
                     onChange={(e) => setCustoExtraEstimado(Number(e.target.value))}
                   />
@@ -257,17 +254,10 @@ export default function SimuladorETIPage() {
               <Slider 
                 value={[custoExtraEstimado]} 
                 onValueChange={(v) => setCustoExtraEstimado(v[0])} 
-                min={500}
-                max={15000} 
-                step={50} 
+                min={1000}
+                max={10000} 
+                step={100} 
               />
-            </div>
-
-            <div className="p-4 bg-primary/5 rounded-xl border border-primary/10 space-y-2">
-              <p className="text-[10px] text-primary font-bold uppercase">Impacto FUNDEB 2026</p>
-              <p className="text-[11px] leading-relaxed text-muted-foreground">
-                O cálculo utiliza o VAAf Base de R$ {parametros.vaaf_base.toLocaleString('pt-BR')} e o fator integral de 1.30.
-              </p>
             </div>
           </CardContent>
         </Card>
@@ -277,37 +267,41 @@ export default function SimuladorETIPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Card className="border-none shadow-sm bg-white">
                 <CardContent className="pt-6">
-                  <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Incremento Receita</div>
-                  <div className="text-2xl font-bold text-green-600">+ R$ {simulacao.incrementoReceita.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</div>
-                  <p className="text-[10px] text-muted-foreground mt-1">Ganhos em repasses</p>
+                  <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Impacto na Receita</div>
+                  <div className={`text-2xl font-bold flex items-center gap-1 ${simulacao.incrementoReceitaBruto >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                    {simulacao.incrementoReceitaBruto >= 0 ? <ArrowUpRight className="h-5 w-5" /> : <ArrowDownRight className="h-5 w-5" />}
+                    R$ {Math.abs(simulacao.incrementoReceitaBruto).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1">Saldo de repasses federais</p>
                 </CardContent>
               </Card>
 
               <Card className="border-none shadow-sm bg-white">
                 <CardContent className="pt-6">
-                  <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Custo Extra Operacional</div>
-                  <div className="text-2xl font-bold text-destructive">- R$ {simulacao.despesaExtra.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</div>
-                  <p className="text-[10px] text-muted-foreground mt-1">Gasto adicional projetado</p>
+                  <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Custo Extra Projetado</div>
+                  <div className="text-2xl font-bold text-destructive">
+                    R$ {simulacao.despesaExtra.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1">Gasto anual adicional</p>
                 </CardContent>
               </Card>
 
               <Card className={`border-none shadow-sm ${simulacao.saldoSimulacao >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
                 <CardContent className="pt-6">
-                  <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Saldo Líquido</div>
+                  <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Superávit/Déficit Líquido</div>
                   <div className={`text-2xl font-bold ${simulacao.saldoSimulacao >= 0 ? 'text-green-700' : 'text-red-700'}`}>
                     R$ {simulacao.saldoSimulacao.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
                   </div>
-                  <p className="text-[10px] text-muted-foreground mt-1">{simulacao.saldoSimulacao >= 0 ? 'Expansão sustentável' : 'Necessita aporte próprio'}</p>
+                  <p className="text-[10px] text-muted-foreground mt-1">{simulacao.saldoSimulacao >= 0 ? 'Expansão viável' : 'Requer aporte municipal'}</p>
                 </CardContent>
               </Card>
             </div>
 
             <Card className="border-none shadow-md">
               <CardHeader>
-                <CardTitle className="text-lg">Projeção de Fluxo de Caixa</CardTitle>
+                <CardTitle className="text-lg">Projeção Financeira da Unidade</CardTitle>
                 <CardDescription>
-                  Modelo: {logicaExpansao === 'simples' ? 'Conversão 1:1' : 'Conversão 1:2 (Físico)'} | 
-                  Unidade: {selectedSchool?.nome}
+                  Impacto no fluxo de caixa da escola: {selectedSchool?.nome}
                 </CardDescription>
               </CardHeader>
               <CardContent className="h-[300px]">
@@ -318,6 +312,7 @@ export default function SimuladorETIPage() {
                     <YAxis axisLine={false} tickLine={false} tickFormatter={(v) => `R$ ${(v / 1000)}k`} />
                     <Tooltip 
                       formatter={(v: any) => [`R$ ${v.toLocaleString('pt-BR')}`, 'Valor']}
+                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                     />
                     <Bar dataKey="valor" radius={[6, 6, 0, 0]}>
                       {chartData.map((entry, index) => (
@@ -331,37 +326,52 @@ export default function SimuladorETIPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Card className="border-accent/20 bg-accent/5">
-                <CardContent className="pt-6">
-                  <h4 className="font-headline font-bold text-accent mb-2 flex items-center gap-2">
-                    <Scale className="h-4 w-4" /> Análise de Capacidade
+                <CardContent className="pt-6 space-y-3">
+                  <h4 className="font-headline font-bold text-accent flex items-center gap-2">
+                    <Scale className="h-4 w-4" /> Diagnóstico de Viabilidade
                   </h4>
-                  <p className="text-sm text-accent/80 leading-relaxed">
-                    {logicaExpansao === 'capacidade' ? (
-                      <>Para manter o padrão integral, a escola atenderá <b>{simulacao.reducaoVagas} alunos a menos</b> em relação ao cenário anterior. Isso exige reorganização do fluxo de matrículas da rede.</>
-                    ) : (
-                      <>Assume-se que a escola comporta novos alunos integrais sem reduzir a oferta total, ocupando vagas que estavam vazias ou turnos inativos.</>
-                    )}
-                  </p>
-                  <div className="mt-3 flex items-center gap-2">
-                    <Badge variant="outline" className="bg-white">{simulacao.viabilidade.toFixed(1)}% de Cobertura</Badge>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Índice de Cobertura</span>
+                      <span className={`font-bold ${simulacao.viabilidade >= 100 ? 'text-green-600' : 'text-destructive'}`}>
+                        {simulacao.viabilidade.toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Perda de Alunos (Capacidade)</span>
+                      <span className="font-bold text-orange-600">{simulacao.reducaoVagas} alunos</span>
+                    </div>
                   </div>
+                  <p className="text-[11px] text-accent/70 leading-relaxed italic">
+                    {logicaExpansao === 'capacidade' 
+                      ? "O modelo 1:2 reduz a receita per capita total da escola, pois o aumento no peso do FUNDEB (1.0 para 1.3) não compensa a perda de uma matrícula inteira."
+                      : "O modelo 1:1 é puramente incremental. Considera que não há perda de atendimento à comunidade."}
+                  </p>
                 </CardContent>
               </Card>
 
               <Card className="border-primary/20 bg-primary/5">
-                <CardContent className="pt-6">
-                  <h4 className="font-headline font-bold text-primary mb-2 flex items-center gap-2">
-                    <GraduationCap className="h-4 w-4" /> Evolução do ETI na Escola
+                <CardContent className="pt-6 space-y-3">
+                  <h4 className="font-headline font-bold text-primary flex items-center gap-2">
+                    <GraduationCap className="h-4 w-4" /> Evolução da Jornada ETI
                   </h4>
-                  <div className="space-y-2 mt-3">
-                    <div className="flex justify-between text-xs">
-                      <span>Percentual Atual</span>
-                      <span className="font-bold">{simulacao.percentualETIAnterior.toFixed(1)}%</span>
-                    </div>
-                    <div className="flex justify-between text-xs text-primary font-bold">
-                      <span>Percentual Projetado</span>
-                      <span>{simulacao.percentualETINovo.toFixed(1)}%</span>
-                    </div>
+                  <div className="space-y-4">
+                     <div className="flex justify-between items-end">
+                        <div className="text-center">
+                           <p className="text-[10px] uppercase font-bold text-muted-foreground">Atual</p>
+                           <p className="text-xl font-bold">{simulacao.percentualETIAnterior.toFixed(1)}%</p>
+                        </div>
+                        <div className="h-8 w-px bg-primary/20" />
+                        <div className="text-center">
+                           <p className="text-[10px] uppercase font-bold text-primary">Projetado</p>
+                           <p className="text-2xl font-bold text-primary">{simulacao.percentualETINovo.toFixed(1)}%</p>
+                        </div>
+                     </div>
+                     <div className="p-2 bg-white/50 rounded-lg border border-primary/10">
+                        <p className="text-[10px] text-primary leading-tight">
+                           A meta municipal deve ser equilibrar a expansão física com a sustentabilidade do FUNDEB VAAf.
+                        </p>
+                     </div>
                   </div>
                 </CardContent>
               </Card>
