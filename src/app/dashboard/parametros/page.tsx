@@ -31,7 +31,7 @@ const VAAF_LABELS: Record<string, string> = {
   D2: "EF Anos Finais — Parcial",
   E1: "EJA Fundamental",
   E2: "EJA Médio",
-  F1: "Ed. Especial / AEE (ADICIONAL)",
+  F1: "Ed. Especial / AEE (PESO ADICIONAL)",
   G1: "Multiplicador: Indígena/Quilombola",
   G2: "Multiplicador: Campo/Rural",
 };
@@ -134,7 +134,7 @@ export default function ParametrosPage() {
         <AlertTriangle className="h-12 w-12 text-destructive/50" />
         <h3 className="text-xl font-bold">Município não identificado</h3>
         <p className="text-muted-foreground max-w-xs">
-          O seu perfil de acesso não possui um vínculo municipal configurado. Entre em contato com o administrador do sistema.
+          Vincule seu perfil a um município para gerenciar parâmetros.
         </p>
       </div>
     );
@@ -150,7 +150,7 @@ export default function ParametrosPage() {
               <MapPin className="h-3 w-3" /> {profile?.municipio}
             </Badge>
           </div>
-          <p className="text-muted-foreground">Configuração dos valores de repasse para o exercício 2026 em {profile?.municipio}</p>
+          <p className="text-muted-foreground">Configuração dos valores de repasse para o exercício 2026</p>
         </div>
         <Button onClick={handleSave} className="gap-2 shadow-lg shadow-primary/20" disabled={isSaving}>
           {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -243,15 +243,12 @@ export default function ParametrosPage() {
                 <Utensils className="h-5 w-5 text-primary" />
                 <CardTitle className="text-lg">Alimentação Escolar (PNAE 2026)</CardTitle>
               </div>
-              <CardDescription>Valores per capita ajustados com reajuste de 14,35% sobre 2025</CardDescription>
+              <CardDescription>Valores per capita e dias letivos</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div className="space-y-4">
-                    <h4 className="font-medium text-sm flex items-center gap-2">
-                      PNAE (R$/dia por aluno)
-                      <Info className="h-3 w-3 text-muted-foreground" />
-                    </h4>
+                    <h4 className="font-medium text-sm">PNAE (R$/dia por aluno)</h4>
                     <div className="space-y-3">
                       <div className="flex justify-between items-center text-sm">
                         <Label>Creche e Ensino Integral (7h+)</Label>
@@ -277,29 +274,13 @@ export default function ParametrosPage() {
                           onChange={(e) => updatePnae('ef_parcial_dia', e.target.value)}
                         />
                       </div>
-                      <div className="flex justify-between items-center text-sm">
-                        <Label>EJA</Label>
-                        <Input 
-                          className="w-24 h-8 text-right" 
-                          value={localParams.pnae.eja_dia.toString().replace('.', ',')}
-                          onChange={(e) => updatePnae('eja_dia', e.target.value)}
-                        />
-                      </div>
-                      <div className="flex justify-between items-center text-sm">
-                        <Label>Indígenas e Quilombolas</Label>
-                        <Input 
-                          className="w-24 h-8 text-right" 
-                          value={localParams.pnae.indigena_dia.toString().replace('.', ',')}
-                          onChange={(e) => updatePnae('indigena_dia', e.target.value)}
-                        />
-                      </div>
                     </div>
                   </div>
                   <div className="space-y-4">
                     <h4 className="font-medium text-sm">Calendário Letivo</h4>
                     <div className="space-y-3">
                       <div className="flex justify-between items-center text-sm">
-                        <Label>Dias Letivos (Padrão INEP)</Label>
+                        <Label>Dias Letivos</Label>
                         <Input 
                           className="w-24 h-8 text-right" 
                           value={localParams.pnae.dias_letivos.toString()}
@@ -317,7 +298,7 @@ export default function ParametrosPage() {
            <Card>
             <CardHeader>
               <CardTitle className="text-lg">MDE e Recursos Próprios</CardTitle>
-              <CardDescription>Aportes anuais do município de {profile?.municipio}</CardDescription>
+              <CardDescription>Aportes anuais do município</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

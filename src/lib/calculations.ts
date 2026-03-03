@@ -2,14 +2,15 @@ import { School, FundingParameters, EnrollmentCounts } from "@/types";
 
 /**
  * 1. FUNDEB VAAF 2026 — Cálculo ponderado por segmento de matrícula.
- * O AEE (F1) é tratado como peso ADICIONAL somado à etapa regular do aluno.
- * Exemplo: Aluno Anos Finais Parcial (1.10) + AEE (1.40) = Peso 2.50.
+ * Regra de Dupla Matrícula: O aluno AEE gera o repasse da sua etapa regular MAIS o repasse do AEE.
+ * Fator Final AEE = Fator da Etapa Regular + Adicional AEE (F1).
  */
 export function calcularVAAF(matriculas: EnrollmentCounts | undefined, parametros: FundingParameters) {
   if (!matriculas) return 0;
   const { vaaf_base, fatores } = parametros;
   
-  const soma_ponderada = 
+  // Soma das matrículas regulares (Ensino Fundamental, Infantil e EJA)
+  let soma_ponderada = 
     (matriculas.creche_integral || 0)    * (fatores.A1 || 1.550) +
     (matriculas.creche_parcial || 0)     * (fatores.A2 || 1.250) +
     (matriculas.creche_conveniada_int || 0) * (fatores.A3 || 1.450) +
@@ -21,9 +22,25 @@ export function calcularVAAF(matriculas: EnrollmentCounts | undefined, parametro
     (matriculas.ef_af_integral || 0)     * (fatores.D1 || 1.300) +
     (matriculas.ef_af_parcial || 0)      * (fatores.D2 || 1.100) +
     (matriculas.eja_fundamental || 0)    * (fatores.E1 || 0.800) +
-    (matriculas.eja_medio || 0)          * (fatores.E2 || 0.850) +
-    // O especial_aee é somado como um adicional sobre a etapa regular ja calculada acima
-    (matriculas.especial_aee || 0)       * (fatores.F1 || 1.400); 
+    (matriculas.eja_medio || 0)          * (fatores.E2 || 0.850);
+
+  // Lógica do Adicional AEE (F1)
+  // Definimos o segmento base da escola para compor o fator total do AEE (Base + Adicional)
+  const total_infantil = (matriculas.creche_integral || 0) + (matriculas.creche_parcial || 0) + (matriculas.pre_integral || 0) + (matriculas.pre_parcial || 0);
+  const total_ai = (matriculas.ef_ai_integral || 0) + (matriculas.ef_ai_parcial || 0);
+  const total_af = (matriculas.ef_af_integral || 0) + (matriculas.ef_af_parcial || 0);
+  
+  let fatorBaseAEE = fatores.C2 || 1.00; // Padrão conservador (Anos Iniciais Parcial)
+  
+  if (total_af > total_ai && total_af > total_infantil) {
+    fatorBaseAEE = fatores.D2 || 1.10; // Predomínio de Anos Finais
+  } else if (total_infantil > total_ai && total_infantil > total_af) {
+    fatorBaseAEE = fatores.B2 || 1.15; // Predomínio de Infantil
+  }
+  
+  // Fator Total AEE = Base do Segmento + Adicional 1,40
+  const fatorEspecial = (fatorBaseAEE) + (fatores.F1 || 1.40);
+  soma_ponderada += (matriculas.especial_aee || 0) * fatorEspecial;
   
   return soma_ponderada * (vaaf_base || 5962.79);
 }

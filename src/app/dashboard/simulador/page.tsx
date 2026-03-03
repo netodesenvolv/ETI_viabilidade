@@ -127,6 +127,7 @@ export default function SimuladorETIPage() {
     setTimeout(() => {
       const schoolMatriculas = selectedSchool.matriculas || {};
       
+      // Cenário Atual
       const vaafA = calcularVAAF(schoolMatriculas, parametros);
       const vaatA = calcularVAAT(selectedSchool, parametros, totalMatriculasRedeAtual);
       const pnaeA = calcularPNAE(schoolMatriculas, parametros);
@@ -134,14 +135,16 @@ export default function SimuladorETIPage() {
       const outrosA = calcularOutros(selectedSchool, parametros, totalMatriculasRedeAtual);
       const receitaAtual = vaafA + vaatA + pnaeA + mdeA + outrosA;
 
+      // Lógica de Expansão Física
       const fatorReducao = logicaExpansao === 'capacidade' ? 2 : 1;
       const vagasQueDevemSerLiberadas = novasMatriculasETI * fatorReducao;
       
       const novasMatriculas = { ...schoolMatriculas };
       
-      // Adiciona as novas matrículas integrais (Ensino Fundamental Anos Iniciais como padrão)
+      // Expansão: Adiciona ao EF AI Integral como padrão de simulação
       novasMatriculas.ef_ai_integral = (novasMatriculas.ef_ai_integral || 0) + novasMatriculasETI;
       
+      // Redução exaustiva de parciais para abrir vaga
       const categoriasParciais: (keyof EnrollmentCounts)[] = [
         'eja_fundamental',
         'eja_medio',
@@ -151,8 +154,6 @@ export default function SimuladorETIPage() {
         'creche_parcial',
         'creche_conveniada_par',
         'especial_aee',
-        'indigena_quilombola',
-        'campo_rural'
       ];
 
       let totalRemovido = 0;
@@ -170,10 +171,11 @@ export default function SimuladorETIPage() {
       const totalMatriculasEscolaNova = Object.values(novasMatriculas).reduce((a: any, b: any) => a + (Number(b) || 0), 0);
       const diferencaAlunosRede = selectedSchool.total_matriculas - totalMatriculasEscolaNova;
 
+      // Cenário Simulado
       const vaafS = calcularVAAF(novasMatriculas, parametros);
       const pnaeS = calcularPNAE(novasMatriculas, parametros);
       
-      // VAAT, MDE e Outros são mantidos fixos na simulação de ganho líquido de ETI conforme solicitado
+      // VAAT, MDE e Outros são fixos por rede, a conversão na escola não altera o total municipal
       const vaatS = vaatA; 
       const mdeS = mdeA; 
       const outrosS = outrosA; 
@@ -297,8 +299,8 @@ export default function SimuladorETIPage() {
                            </div>
                            <p className="text-[10px] text-muted-foreground mt-1 leading-tight">
                               {resultado.saldoSimulacao >= 0 
-                                ? "O incremento de receita (VAAf + PNAE) cobre os custos extras." 
-                                : "O incremento não cobre os custos; requer aporte municipal direto."}
+                                ? "O incremento de receita cobre os custos extras." 
+                                : "O incremento não cobre os custos; requer aporte municipal."}
                            </p>
                         </div>
                      </div>
@@ -358,7 +360,7 @@ export default function SimuladorETIPage() {
                   <Label htmlFor="capacidade" className="cursor-pointer space-y-1">
                     <div className="font-bold flex items-center gap-2">Impacto Físico (1:2)</div>
                     <p className="text-[10px] text-muted-foreground leading-tight">
-                      Cada 1 novo integral substitui 2 parciais (Manhã e Tarde). Reflete lotação máxima das salas.
+                      Cada 1 novo integral substitui 2 parciais (Manhã e Tarde).
                     </p>
                   </Label>
                 </div>
@@ -378,7 +380,7 @@ export default function SimuladorETIPage() {
               <Slider 
                 value={[novasMatriculasETI]} 
                 onValueChange={(v) => setNovasMatriculasETI(v[0])} 
-                max={1000} 
+                max={1500} 
                 step={1} 
               />
             </div>
@@ -423,14 +425,14 @@ export default function SimuladorETIPage() {
               <div className="space-y-1">
                 <h4 className="font-bold text-primary">Pronto para Simular</h4>
                 <p className="text-muted-foreground text-xs max-w-[250px]">
-                  Configure os parâmetros à esquerda e clique em <b>Calcular</b> para ver o impacto financeiro e físico.
+                  Configure os parâmetros e clique em <b>Calcular</b>.
                 </p>
               </div>
             </div>
           ) : isCalculating ? (
             <div className="h-full min-h-[400px] flex flex-col items-center justify-center text-center p-8 space-y-4">
               <Loader2 className="h-10 w-10 animate-spin text-primary" />
-              <p className="text-sm font-medium animate-pulse text-primary">Analisando cruzamento de pesos FUNDEB 2026...</p>
+              <p className="text-sm font-medium animate-pulse text-primary">Calculando impacto estratégico...</p>
             </div>
           ) : resultado && (
             <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
@@ -482,7 +484,7 @@ export default function SimuladorETIPage() {
                       <YAxis axisLine={false} tickLine={false} tickFormatter={(v) => `R$ ${(v / 1000)}k`} />
                       <Tooltip 
                         formatter={(v: any) => [`R$ ${v.toLocaleString('pt-BR')}`, 'Valor']}
-                        contentStyle={{ borderRadius: '12px', border: 'none', shadow: 'lg' }}
+                        contentStyle={{ borderRadius: '12px', border: 'none' }}
                       />
                       <Bar dataKey="valor" radius={[6, 6, 0, 0]} barSize={60}>
                         {chartData.map((entry, index) => (
@@ -556,11 +558,6 @@ export default function SimuladorETIPage() {
                           </div>
                        </div>
                     </div>
-                    <div className="pt-2">
-                       <p className="text-[9px] text-muted-foreground italic leading-tight">
-                         Meta 6 do PNE: Mínimo 25% de matrículas da rede pública em tempo integral.
-                       </p>
-                    </div>
                   </CardContent>
                 </Card>
               </div>
@@ -586,5 +583,5 @@ function AuditRow({ label, valA, valS, help }: { label: string, valA: number, va
         {Math.abs(diff) < 1 ? 'R$ 0' : `${diff >= 0 ? '+' : ''}R$ ${diff.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`}
       </TableCell>
     </TableRow>
-  )
+  );
 }
