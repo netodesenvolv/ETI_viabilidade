@@ -53,7 +53,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 
@@ -551,3 +551,19 @@ function AuditRow({ label, valA, valS, help }: { label: string, valA: number, va
   )
 }
 
+function AuditRow({ label, valA, valS, help }: { label: string, valA: number, valS: number, help?: string }) {
+  const diff = valS - valA;
+  return (
+    <TableRow className="text-xs">
+      <TableCell className="font-medium">
+        <div>{label}</div>
+        {help && <div className="text-[9px] text-muted-foreground font-normal italic">{help}</div>}
+      </TableCell>
+      <TableCell className="text-right font-mono">R$ {valA.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+      <TableCell className="text-right font-mono">R$ {valS.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+      <TableCell className={`text-right font-bold font-mono ${diff >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+        {diff >= 0 ? '+' : ''}R$ {diff.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+      </TableCell>
+    </TableRow>
+  )
+}
