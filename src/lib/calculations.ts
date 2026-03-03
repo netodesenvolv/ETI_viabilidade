@@ -58,6 +58,7 @@ export function calcularVAAT(escola: School, parametros: FundingParameters, tota
 
 /**
  * 3. PNAE 2026 — Por tipo de matrícula × valor anual (Regra: Valor Dia * 200 dias).
+ * CRÍTICO: Não somar especial_aee separadamente, pois o PNAE é por cabeça (CPF).
  */
 export function calcularPNAE(matriculas: EnrollmentCounts | undefined, parametros?: FundingParameters) {
   if (!matriculas) return 0;
@@ -80,8 +81,7 @@ export function calcularPNAE(matriculas: EnrollmentCounts | undefined, parametro
     (matriculas.ef_af_integral || 0)     * int_dia * dias +
     (matriculas.ef_af_parcial || 0)      * common_dia * dias +
     (matriculas.eja_fundamental || 0)    * common_dia * dias +
-    (matriculas.eja_medio || 0)          * common_dia * dias +
-    (matriculas.especial_aee || 0)       * common_dia * dias
+    (matriculas.eja_medio || 0)          * common_dia * dias
   );
 }
 

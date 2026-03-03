@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useMemo, useEffect } from "react";
@@ -152,20 +151,20 @@ export default function SimuladorETIPage() {
         'pre_parcial',
         'creche_parcial',
         'creche_conveniada_par',
-        'creche_conveniada_int', // Removendo também integrais se necessário para conversão total
+        'creche_conveniada_int', 
         'pre_integral',
         'creche_integral',
       ];
 
-      // Adiciona o novo integral (usamos Anos Finais como padrão de simulação se não houver contexto)
+      // Adiciona o novo integral
       const targetBucket = selectedSchool.nome.toLowerCase().includes('fundamental') ? 'ef_af_integral' : 'ef_ai_integral';
       novasMatriculas[targetBucket] = (novasMatriculas[targetBucket] || 0) + novasMatriculasETI;
 
       let remanescenteRemover = vagasQueDevemSerLiberadas;
       let totalRemovidoFisico = 0;
-
       const totalFisicoAntes = PHYSICAL_BUCKETS.reduce((acc, cat) => acc + (Number(schoolMatriculas[cat]) || 0), 0);
 
+      // Remove parciais rigorosamente
       for (const cat of categoriasParciais) {
         if (remanescenteRemover <= 0) break;
         const valorAtual = Number(novasMatriculas[cat] || 0);
@@ -175,26 +174,26 @@ export default function SimuladorETIPage() {
         totalRemovidoFisico += removiveis;
       }
 
-      // Se a escola foi totalmente limpa de parciais, limpamos o marcador AEE proporcionalmente
-      // (Se removeu 100% dos parciais, removemos o marcador AEE desses parciais)
+      // LIMPEZA DE MARCADORES (AEE, Rural, etc.)
       if (totalFisicoAntes > 0) {
         const percRemovido = totalRemovidoFisico / totalFisicoAntes;
-        if (percRemovido >= 0.99) {
-           // Se converteu a escola inteira, os alunos AEE agora são todos ETI
-           // Mantemos o número de AEE mas eles agora rodam sob a lógica ETI
+        // Se a substituição for total (como 686 -> 343), zera o rastro de marcadores do censo anterior
+        if (percRemovido >= 0.98) {
+           novasMatriculas.especial_aee = 0;
+           novasMatriculas.indigena_quilombola = 0;
+           novasMatriculas.campo_rural = 0;
         } else {
-           // Redução proporcional de marcadores se a escola apenas diminuiu
            novasMatriculas.especial_aee = Math.max(0, Math.round(novasMatriculas.especial_aee * (1 - percRemovido)));
         }
       }
 
-      // Headcount físico NÃO soma especial_aee (Double Enrollment)
       const totalMatriculasEscolaNova = PHYSICAL_BUCKETS.reduce((acc, cat) => acc + (Number(novasMatriculas[cat]) || 0), 0);
       const reducaoVagas = selectedSchool.total_matriculas - totalMatriculasEscolaNova;
 
       const vaafS = calcularVAAF(novasMatriculas, parametros);
       const pnaeS = calcularPNAE(novasMatriculas, parametros);
       
+      // VAAT, MDE e Outros são FIXOS na unidade (regra de rateio municipal não muda com turno)
       const vaatS = vaatA; 
       const mdeS = mdeA; 
       const outrosS = outrosA; 
@@ -415,20 +414,32 @@ export default function SimuladorETIPage() {
                 <Card className="border-primary/20 bg-primary/5 p-6">
                   <h4 className="font-bold text-primary flex items-center gap-2 mb-4 border-b pb-2"><GraduationCap className="h-4 w-4" /> Meta PNE (Integral)</h4>
                   <div className="grid grid-cols-2 gap-4">
-                     <div className="space-y-1">
-                        <p className="text-[10px] font-bold text-muted-foreground">Nesta Escola</p>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs">{resultado.percentualETIAnterior.toFixed(1)}%</span>
+                     <div className="space-y-3">
+                        <p className="text-[10px] font-bold text-muted-foreground uppercase">Nesta Escola</p>
+                        <div className="flex items-center gap-3">
+                          <div className="text-sm">
+                            <p className="text-[8px] text-muted-foreground">Atual</p>
+                            <p className="font-bold">{resultado.percentualETIAnterior.toFixed(1)}%</p>
+                          </div>
                           <ChevronRight className="h-3 w-3 text-muted-foreground" />
-                          <span className="text-xs font-bold text-primary">{resultado.percentualETINovo.toFixed(1)}%</span>
+                          <div className="text-sm">
+                            <p className="text-[8px] text-primary">Simulado</p>
+                            <p className="font-bold text-primary">{resultado.percentualETINovo.toFixed(1)}%</p>
+                          </div>
                         </div>
                      </div>
-                     <div className="space-y-1 border-l pl-4">
-                        <p className="text-[10px] font-bold text-muted-foreground">Na Rede</p>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs">{metaPNERedeAtual.toFixed(1)}%</span>
+                     <div className="space-y-3 border-l pl-4">
+                        <p className="text-[10px] font-bold text-muted-foreground uppercase">Na Rede Municipal</p>
+                        <div className="flex items-center gap-3">
+                          <div className="text-sm">
+                            <p className="text-[8px] text-muted-foreground">Atual</p>
+                            <p className="font-bold">{metaPNERedeAtual.toFixed(1)}%</p>
+                          </div>
                           <ChevronRight className="h-3 w-3 text-muted-foreground" />
-                          <span className="text-xs font-bold text-primary">{networkMetaSimulada.toFixed(1)}%</span>
+                          <div className="text-sm">
+                            <p className="text-[8px] text-primary">Simulado</p>
+                            <p className="font-bold text-primary">{networkMetaSimulada.toFixed(1)}%</p>
+                          </div>
                         </div>
                      </div>
                   </div>
