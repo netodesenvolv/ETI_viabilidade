@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useMemo } from "react";
@@ -9,23 +8,34 @@ import {
   FileUp, 
   CheckCircle2, 
   Loader2, 
-  AlertTriangle, 
   Database,
   Building,
   Users,
   Play,
-  ArrowRight,
   RefreshCw,
   Info,
   ShieldAlert,
-  Zap
+  Zap,
+  Trash2,
+  AlertTriangle
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { useAuth, useFirestore, useUser, useDoc } from "@/firebase";
-import { doc, writeBatch } from "firebase/firestore";
+import { doc, writeBatch, collection, getDocs, deleteDoc } from "firebase/firestore";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface INEPSchool {
   codigo_inep: string;
@@ -37,18 +47,16 @@ interface INEPSchool {
   tp_dependencia: string;
 }
 
-/**
- * Throttling otimizado para planos pagos (Blaze).
- * Mantemos uma pequena pausa apenas para evitar saturação do buffer do navegador.
- */
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export default function PipelineImportadorPage() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState("");
   const [cityCount, setCityCount] = useState(0);
+  const [targetMunicipioId, setTargetMunicipioId] = useState("");
   
   const [schoolsFile, setSchoolsFile] = useState<File | null>(null);
   const [enrollmentsFile, setEnrollmentsFile] = useState<File | null>(null);
@@ -61,14 +69,8 @@ export default function PipelineImportadorPage() {
   const parseCSV = (text: string) => {
     const lines = text.split('\n');
     if (lines.length < 2) return [];
-    
-    const firstLine = lines[0];
-    let separator = ',';
-    if (firstLine.includes('\t')) separator = '\t';
-    else if (firstLine.includes(';')) separator = ';';
-    
-    const headers = firstLine.split(separator).map(h => h.trim().replace(/"/g, ''));
-    
+    const separator = lines[0].includes(';') ? ';' : (lines[0].includes('\t') ? '\t' : ',');
+    const headers = lines[0].split(separator).map(h => h.trim().replace(/"/g, ''));
     return lines.slice(1).filter(l => l.trim()).map(line => {
       const values = line.split(separator).map(v => v.trim().replace(/"/g, ''));
       const row: Record<string, string> = {};
@@ -77,43 +79,62 @@ export default function PipelineImportadorPage() {
     });
   };
 
+  const handleCleanupOrphans = async () => {
+    if (!db || !targetMunicipioId) {
+      toast({ title: "Atenção", description: "Informe o Cód. IBGE do município para limpeza.", variant: "destructive" });
+      return;
+    }
+    setCleaning(true);
+    try {
+      const schoolsCol = collection(db, 'municipios', targetMunicipioId, 'schools');
+      const snapshot = await getDocs(schoolsCol);
+      let count = 0;
+      
+      const batch = writeBatch(db);
+      snapshot.docs.forEach(docSnap => {
+        const data = docSnap.data();
+        // Remove escolas sem matrículas ou sem atualização do novo ciclo (lixo de importação)
+        if (!data.total_matriculas || data.total_matriculas === 0) {
+          batch.delete(docSnap.ref);
+          count++;
+        }
+      });
+      
+      await batch.commit();
+      toast({ title: "Limpeza Concluída", description: `${count} entidades sem matrícula foram removidas.` });
+    } catch (e: any) {
+      toast({ title: "Erro na Limpeza", description: e.message, variant: "destructive" });
+    } finally {
+      setCleaning(false);
+    }
+  };
+
   const handleRunPipeline = async () => {
     if (!schoolsFile || !enrollmentsFile || !db) {
       toast({ title: "Erro", description: "Selecione ambos os arquivos para processar.", variant: "destructive" });
       return;
     }
-
     setLoading(true);
     setStatus("Sincronizando bases nacionais...");
-    setProgress(5);
-    setCityCount(0);
-
     try {
-      const schoolsText = await schoolsFile.text();
-      const schoolsRaw = parseCSV(schoolsText);
+      const schoolsRaw = parseCSV(await schoolsFile.text());
       const schoolMap = new Map<string, INEPSchool>();
-      
       schoolsRaw.forEach(row => {
-        const inep = row.CO_ENTIDADE;
-        const dep = row.TP_DEPENDENCIA;
-        // Filtramos apenas escolas municipais (TP_DEPENDENCIA = 3)
-        if (!inep || dep !== "3") return;
-
-        schoolMap.set(inep, {
-          codigo_inep: inep,
-          nome: row.NO_ENTIDADE || "N/A",
-          municipio_id: row.CO_MUNICIPIO || "N/A",
-          municipio_nome: row.NO_MUNICIPIO || "N/A",
-          uf: row.SG_UF || "N/A",
-          localizacao: row.TP_LOCALIZACAO === "2" ? "rural" : "urbana",
-          tp_dependencia: dep
-        });
+        if (row.TP_DEPENDENCIA === "3") { // Apenas Municipal
+          schoolMap.set(row.CO_ENTIDADE, {
+            codigo_inep: row.CO_ENTIDADE,
+            nome: row.NO_ENTIDADE || "N/A",
+            municipio_id: row.CO_MUNICIPIO || "N/A",
+            municipio_nome: row.NO_MUNICIPIO || "N/A",
+            uf: row.SG_UF || "N/A",
+            localizacao: row.TP_LOCALIZACAO === "2" ? "rural" : "urbana",
+            tp_dependencia: "3"
+          });
+        }
       });
 
-      const enrollmentsText = await enrollmentsFile.text();
-      const enrollmentsRaw = parseCSV(enrollmentsText);
+      const enrollmentsRaw = parseCSV(await enrollmentsFile.text());
       const consolidatedData = new Map<string, any[]>();
-
       enrollmentsRaw.forEach(row => {
         const inep = row.CO_ENTIDADE;
         const schoolInfo = schoolMap.get(inep);
@@ -142,61 +163,40 @@ export default function PipelineImportadorPage() {
           },
           updatedAt: new Date().toISOString()
         };
-
-        const mId = schoolInfo.municipio_id;
-        if (!consolidatedData.has(mId)) consolidatedData.set(mId, []);
-        consolidatedData.get(mId)?.push(schoolDoc);
+        if (!consolidatedData.has(schoolInfo.municipio_id)) consolidatedData.set(schoolInfo.municipio_id, []);
+        consolidatedData.get(schoolInfo.municipio_id)?.push(schoolDoc);
       });
 
       let processedCities = 0;
       const allEntries = Array.from(consolidatedData.entries());
-      const totalCities = allEntries.length;
-
       for (const [mId, schools] of allEntries) {
-        // Lotes maiores para plano Blaze (400 por lote)
         for (let i = 0; i < schools.length; i += 400) {
           const batch = writeBatch(db);
-          const chunk = schools.slice(i, i + 400);
-          
-          chunk.forEach(school => {
-            const sRef = doc(db, 'municipios', mId, 'schools', school.codigo_inep);
-            batch.set(sRef, school, { merge: true });
+          schools.slice(i, i + 400).forEach(s => {
+            const sRef = doc(db, 'municipios', mId, 'schools', s.codigo_inep);
+            batch.set(sRef, s); // SEM MERGE para limpar lixo de campos antigos
           });
-          
           await batch.commit();
-          // Pausa curta (200ms) apenas para respiro do navegador
-          await delay(200); 
+          await delay(150);
         }
-        
         processedCities++;
         setCityCount(processedCities);
-        setProgress(20 + Math.floor((processedCities / totalCities) * 80));
-        setStatus(`Processando: ${processedCities} de ${totalCities} prefeituras...`);
+        setProgress(Math.floor((processedCities / allEntries.length) * 100));
+        setStatus(`Gravando municípios... ${processedCities} de ${allEntries.length}`);
       }
-
-      toast({ title: "Sucesso", description: "Pipeline nacional concluído com sucesso." });
+      toast({ title: "Pipeline Concluído", description: "Base nacional 2025 atualizada com sucesso." });
     } catch (err: any) {
-      const isQuotaError = err.message?.includes('quota') || err.message?.includes('exhausted');
-      toast({ 
-        title: isQuotaError ? "Cota Excedida" : "Erro no Pipeline", 
-        description: isQuotaError 
-          ? "O limite de escritas do Firebase foi atingido. Verifique se a migração para o plano Blaze foi concluída." 
-          : err.message, 
-        variant: "destructive" 
-      });
+      toast({ title: "Erro no Pipeline", description: err.message, variant: "destructive" });
     } finally {
-      setLoading(false);
-      setProgress(0);
-      setStatus("");
+      setLoading(false); setProgress(0); setStatus("");
     }
   };
 
   if (profile?.role !== 'Admin') {
     return (
-      <div className="h-[60vh] flex flex-col items-center justify-center text-center p-8 space-y-4">
+      <div className="h-[60vh] flex flex-col items-center justify-center p-8 space-y-4">
         <ShieldAlert className="h-12 w-12 text-destructive/50" />
-        <h3 className="text-xl font-bold">Acesso Restrito</h3>
-        <p className="text-muted-foreground">Apenas o Administrador Mestre pode executar este pipeline.</p>
+        <h3 className="text-xl font-bold text-primary">Acesso Restrito ao Administrador</h3>
       </div>
     );
   }
@@ -206,77 +206,67 @@ export default function PipelineImportadorPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-headline font-bold text-primary">Importador Nacional</h2>
-          <p className="text-muted-foreground">Processamento centralizado de microdados INEP 2025</p>
+          <p className="text-muted-foreground">Distribuição centralizada de microdados 2025</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge className="bg-green-600 hover:bg-green-700 py-1 px-3 gap-1.5">
-            <Zap className="h-3.5 w-3.5" /> Alta Performance (Blaze)
-          </Badge>
-        </div>
+        <Badge className="bg-green-600 py-1 px-3 gap-1.5"><Zap className="h-3.5 w-3.5" /> Modo Blaze Ativo</Badge>
       </div>
 
-      <Alert className="bg-blue-50 border-blue-200 text-blue-800">
-        <Info className="h-4 w-4 text-blue-600" />
-        <AlertTitle className="font-bold">Processamento de Larga Escala</AlertTitle>
-        <AlertDescription className="text-xs">
-          O sistema está configurado para o plano Blaze, permitindo a escrita de todos os municípios simultaneamente. 
-          O join entre as tabelas de Escolas e Matrículas é feito automaticamente via CO_ENTIDADE.
-        </AlertDescription>
-      </Alert>
-
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-1 shadow-md">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <FileUp className="h-5 w-5 text-primary" /> Fontes CSV (Nacional)
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1">
-                <Building className="h-3 w-3" /> 1. Escolas (Arquivo Nacional)
-              </label>
-              <Input type="file" accept=".csv" onChange={(e) => setSchoolsFile(e.target.files?.[0] || null)} />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1">
-                <Users className="h-3 w-3" /> 2. Matrículas (Arquivo Nacional)
-              </label>
-              <Input type="file" accept=".csv" onChange={(e) => setEnrollmentsFile(e.target.files?.[0] || null)} />
-            </div>
-            <Button className="w-full gap-2 mt-4" onClick={handleRunPipeline} disabled={loading || !schoolsFile || !enrollmentsFile}>
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-              {loading ? "Processando..." : "Rodar Pipeline Nacional"}
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="space-y-6">
+          <Card className="shadow-md">
+            <CardHeader><CardTitle className="text-lg flex items-center gap-2"><FileUp className="h-5 w-5 text-primary" /> Fontes Nacionais</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1"><Building className="h-3 w-3" /> 1. Escolas (CSV)</label>
+                <Input type="file" accept=".csv" onChange={(e) => setSchoolsFile(e.target.files?.[0] || null)} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1"><Users className="h-3 w-3" /> 2. Matrículas (CSV)</label>
+                <Input type="file" accept=".csv" onChange={(e) => setEnrollmentsFile(e.target.files?.[0] || null)} />
+              </div>
+              <Button className="w-full gap-2 mt-4" onClick={handleRunPipeline} disabled={loading || !schoolsFile || !enrollmentsFile}>
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />} Rodar Pipeline Nacional
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-md border-orange-200 bg-orange-50/30">
+            <CardHeader><CardTitle className="text-lg flex items-center gap-2 text-orange-700"><Trash2 className="h-5 w-5" /> Limpeza de Dados Órfãos</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-[10px] text-orange-600 leading-tight">Remove entidades que não possuem matrículas em 2025 (lixo do Censo 2024).</p>
+              <Input placeholder="Cód. IBGE Município" value={targetMunicipioId} onChange={e => setTargetMunicipioId(e.target.value)} className="bg-white border-orange-200" />
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" className="w-full gap-2 border-orange-300 text-orange-700 hover:bg-orange-100" disabled={cleaning}>
+                    {cleaning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} Limpar Entidades Sem Matrícula
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Confirmar Limpeza Estrutural?</AlertDialogTitle>
+                    <AlertDialogDescription>Isso removerá todas as escolas que não possuem matrículas cadastradas no Cód. IBGE informado.</AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleCleanupOrphans} className="bg-orange-600">Sim, Limpar Lixo</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </CardContent>
+          </Card>
+        </div>
 
         <Card className="lg:col-span-2 shadow-md">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <RefreshCw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} /> Monitor de Distribuição
-            </CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle className="text-lg flex items-center gap-2"><RefreshCw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} /> Monitor de Importação</CardTitle></CardHeader>
           <CardContent className="space-y-8 py-10">
             {loading ? (
               <div className="space-y-4">
-                <div className="flex justify-between text-xs font-bold text-primary">
-                  <span>{status}</span>
-                  <span>{progress}%</span>
-                </div>
+                <div className="flex justify-between text-xs font-bold text-primary"><span>{status}</span><span>{progress}%</span></div>
                 <Progress value={progress} className="h-3" />
-                <div className="flex items-center gap-2 p-3 bg-green-50 border rounded-lg text-green-700">
-                  <CheckCircle2 className="h-4 w-4" />
-                  <p className="text-[10px]">
-                    Modo Blaze Ativo: Gravando {cityCount || 0} municípios identificados nos arquivos.
-                  </p>
-                </div>
+                <Alert className="bg-green-50 border-green-200 text-green-700"><CheckCircle2 className="h-4 w-4" /><AlertDescription className="text-xs">Gravando {cityCount} municípios. O sistema está sobrescrevendo documentos antigos para evitar lixo.</AlertDescription></Alert>
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center h-48 border-2 border-dashed rounded-xl opacity-50">
-                <Database className="h-10 w-10 mb-2" />
-                <p className="text-sm font-medium">Aguardando arquivos para distribuição nacional</p>
-              </div>
+              <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed rounded-xl opacity-50"><Database className="h-10 w-10 mb-2" /><p className="text-sm">Aguardando arquivos para distribuição nacional</p></div>
             )}
           </CardContent>
         </Card>

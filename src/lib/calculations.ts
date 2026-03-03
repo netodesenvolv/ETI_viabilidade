@@ -24,22 +24,24 @@ export function calcularVAAF(matriculas: EnrollmentCounts | undefined, parametro
     (matriculas.eja_fundamental || 0)    * (fatores.E1 || 0.800) +
     (matriculas.eja_medio || 0)          * (fatores.E2 || 0.850);
 
-  // Lógica do Adicional AEE (F1)
-  // Definimos o segmento base da escola para compor o fator total do AEE (Base + Adicional)
+  // Lógica do Adicional AEE (F1) - Dupla Matrícula
+  // Identificamos o segmento predominante da escola para servir de base ao AEE
   const total_infantil = (matriculas.creche_integral || 0) + (matriculas.creche_parcial || 0) + (matriculas.pre_integral || 0) + (matriculas.pre_parcial || 0);
   const total_ai = (matriculas.ef_ai_integral || 0) + (matriculas.ef_ai_parcial || 0);
   const total_af = (matriculas.ef_af_integral || 0) + (matriculas.ef_af_parcial || 0);
   
-  let fatorBaseAEE = fatores.C2 || 1.00; // Padrão conservador (Anos Iniciais Parcial)
+  // Fator base padrão: EF Anos Iniciais Parcial (1.00)
+  let fatorBaseAEE = fatores.C2 || 1.00; 
   
+  // Se a escola é predominantemente de Anos Finais, usa 1.10 como base
   if (total_af > total_ai && total_af > total_infantil) {
-    fatorBaseAEE = fatores.D2 || 1.10; // Predomínio de Anos Finais
+    fatorBaseAEE = fatores.D2 || 1.10;
   } else if (total_infantil > total_ai && total_infantil > total_af) {
-    fatorBaseAEE = fatores.B2 || 1.15; // Predomínio de Infantil
+    fatorBaseAEE = fatores.B2 || 1.15;
   }
   
-  // Fator Total AEE = Base do Segmento + Adicional 1,40
-  const fatorEspecial = (fatorBaseAEE) + (fatores.F1 || 1.40);
+  // Fator Final AEE = Fator da Etapa + Adicional (ex: 1.10 + 1.40 = 2.50)
+  const fatorEspecial = fatorBaseAEE + (fatores.F1 || 1.40);
   soma_ponderada += (matriculas.especial_aee || 0) * fatorEspecial;
   
   return soma_ponderada * (vaaf_base || 5962.79);
