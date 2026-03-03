@@ -35,13 +35,27 @@ import {
   Scale, 
   ArrowDownRight, 
   ArrowUpRight,
-  Play
+  Play,
+  Eye,
+  FileSearch,
+  ChevronRight
 } from "lucide-react";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useAuth, useFirestore, useUser, useDoc, useCollection } from "@/firebase";
 import { doc, collection } from "firebase/firestore";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 
 interface SimulacaoResult {
   receitaAtual: number;
@@ -55,6 +69,10 @@ interface SimulacaoResult {
   percentualETINovo: number;
   viabilidade: number;
   totalMatriculasEscolaNova: number;
+  detalhes: {
+    atual: { vaaf: number; vaat: number; pnae: number; mde: number; outros: number; total: number };
+    simulado: { vaaf: number; vaat: number; pnae: number; mde: number; outros: number; total: number };
+  }
 }
 
 export default function SimuladorETIPage() {
@@ -101,7 +119,6 @@ export default function SimuladorETIPage() {
 
     setIsCalculating(true);
 
-    // Simulando delay de processamento para feedback visual
     setTimeout(() => {
       const schoolMatriculas = selectedSchool.matriculas || {};
       
@@ -113,34 +130,26 @@ export default function SimuladorETIPage() {
       const outrosA = calcularOutros(selectedSchool, parametros, totalMatriculasRedeAtual);
       const receitaAtual = vaafA + vaatA + pnaeA + mdeA + outrosA;
 
-      // 2. Lógica de Expansão e Impacto Físico
+      // 2. Lógica de Expansão
       const fatorReducao = logicaExpansao === 'capacidade' ? 2 : 1;
-      
-      // Criamos as novas matrículas ajustando parciais para dar lugar a integrais
-      // Priorizamos a remoção de Anos Iniciais Parciais (C2) e Anos Finais Parciais (D2)
       const alunosParciaisRemover = novasMatriculasETI * fatorReducao;
       
       const novasMatriculas = { ...schoolMatriculas };
       
-      // Adiciona integrais nos anos iniciais (exemplo simplificado)
+      // Simulação: Adiciona em EF Anos Iniciais Integral
       novasMatriculas.ef_ai_integral = (novasMatriculas.ef_ai_integral || 0) + novasMatriculasETI;
       
-      // Remove parciais para compensar
       let remanescenteRemover = alunosParciaisRemover;
-      
-      // Tenta remover do Fundamental Anos Iniciais Parcial primeiro
       const removiveisAI = Math.min(remanescenteRemover, novasMatriculas.ef_ai_parcial || 0);
       novasMatriculas.ef_ai_parcial = (novasMatriculas.ef_ai_parcial || 0) - removiveisAI;
       remanescenteRemover -= removiveisAI;
       
-      // Se ainda precisar remover, tira do Fundamental Anos Finais Parcial
       if (remanescenteRemover > 0) {
         const removiveisAF = Math.min(remanescenteRemover, novasMatriculas.ef_af_parcial || 0);
         novasMatriculas.ef_af_parcial = (novasMatriculas.ef_af_parcial || 0) - removiveisAF;
         remanescenteRemover -= removiveisAF;
       }
 
-      // Calcula novo total da escola
       const totalMatriculasEscolaNova = Object.values(novasMatriculas).reduce((a: any, b: any) => a + (Number(b) || 0), 0);
       const diferencaAlunosEscola = selectedSchool.total_matriculas - totalMatriculasEscolaNova;
       const totalMatriculasRedeNova = totalMatriculasRedeAtual - diferencaAlunosEscola;
@@ -177,7 +186,11 @@ export default function SimuladorETIPage() {
         percentualETIAnterior: selectedSchool.percentual_eti || 0,
         percentualETINovo,
         viabilidade: despesaExtra > 0 ? (incrementoReceitaBruto / despesaExtra) * 100 : 100,
-        totalMatriculasEscolaNova
+        totalMatriculasEscolaNova,
+        detalhes: {
+          atual: { vaaf: vaafA, vaat: vaatA, pnae: pnaeA, mde: mdeA, outros: outrosA, total: receitaAtual },
+          simulado: { vaaf: vaafS, vaat: vaatS, pnae: pnaeS, mde: mdeS, outros: outrosS, total: receitaSimulada }
+        }
       });
       setIsCalculating(false);
     }, 800);
@@ -205,9 +218,79 @@ export default function SimuladorETIPage() {
           <h2 className="text-3xl font-headline font-bold text-primary">Simulador de Expansão: {profile?.municipio}</h2>
           <p className="text-muted-foreground">Projeções de impacto fiscal e físico para o exercício 2026</p>
         </div>
-        <Badge variant="outline" className="h-fit py-1 px-3 border-accent/30 text-accent bg-accent/5 gap-2">
-          <RefreshCcw className="h-3 w-3" /> Motor de Cálculo 2026
-        </Badge>
+        <div className="flex gap-2">
+           {resultado && (
+             <Dialog>
+               <DialogTrigger asChild>
+                 <Button variant="outline" className="gap-2 border-accent text-accent hover:bg-accent/5">
+                   <FileSearch className="h-4 w-4" /> Auditoria de Impacto
+                 </Button>
+               </DialogTrigger>
+               <DialogContent className="max-w-3xl">
+                 <DialogHeader>
+                   <DialogTitle>Auditoria de Viabilidade Financeira</DialogTitle>
+                   <DialogDescription>Comparativo detalhado entre os cenários Atual e Simulado.</DialogDescription>
+                 </DialogHeader>
+                 <ScrollArea className="max-h-[70vh] pr-4">
+                   <div className="space-y-6 py-4">
+                     <Table>
+                       <TableHeader>
+                         <TableRow className="bg-muted/50">
+                           <TableHead>Rubrica de Receita</TableHead>
+                           <TableHead className="text-right">Cenário Atual</TableHead>
+                           <TableHead className="text-right">Cenário Simulado</TableHead>
+                           <TableHead className="text-right">Diferença</TableHead>
+                         </TableRow>
+                       </TableHeader>
+                       <TableBody>
+                         <AuditRow label="VAAf (FUNDEB)" valA={resultado.detalhes.atual.vaaf} valS={resultado.detalhes.simulado.vaaf} />
+                         <AuditRow label="VAAT (Complementação)" valA={resultado.detalhes.atual.vaat} valS={resultado.detalhes.simulado.vaat} />
+                         <AuditRow label="PNAE (Merenda)" valA={resultado.detalhes.atual.pnae} valS={resultado.detalhes.simulado.pnae} />
+                         <AuditRow label="MDE (Recursos Próprios)" valA={resultado.detalhes.atual.mde} valS={resultado.detalhes.simulado.mde} />
+                         <AuditRow label="Outros (QSE/PDDE)" valA={resultado.detalhes.atual.outros} valS={resultado.detalhes.simulado.outros} />
+                         <TableRow className="bg-primary/5 font-bold">
+                           <TableCell>RECEITA TOTAL ANUAL</TableCell>
+                           <TableCell className="text-right">R$ {resultado.receitaAtual.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                           <TableCell className="text-right">R$ {resultado.receitaSimulada.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                           <TableCell className="text-right text-green-600">+ R$ {resultado.incrementoReceitaBruto.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                         </TableRow>
+                       </TableBody>
+                     </Table>
+
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="p-4 bg-muted/30 rounded-xl border">
+                           <p className="text-[10px] font-bold uppercase text-muted-foreground mb-2">Despesa Extra Estimada</p>
+                           <div className="flex justify-between items-center">
+                              <span className="text-sm font-medium">Custo Operacional ETI</span>
+                              <span className="text-sm font-bold text-destructive">R$ {resultado.despesaExtra.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</span>
+                           </div>
+                           <Separator className="my-2" />
+                           <p className="text-[10px] text-muted-foreground italic">Cálculo: {resultado.novasMatriculasETI} alunos × R$ {custoExtraEstimado.toLocaleString('pt-BR')}</p>
+                        </div>
+                        <div className={`p-4 rounded-xl border ${resultado.saldoSimulacao >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                           <p className="text-[10px] font-bold uppercase text-muted-foreground mb-2">Resultado Líquido (Simulação)</p>
+                           <div className="flex justify-between items-center">
+                              <span className="text-sm font-medium">Superávit/Déficit Final</span>
+                              <span className={`text-lg font-bold ${resultado.saldoSimulacao >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                R$ {resultado.saldoSimulacao.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                              </span>
+                           </div>
+                           <p className="text-[10px] text-muted-foreground mt-1 leading-tight">
+                              {resultado.saldoSimulacao >= 0 
+                                ? "A expansão gera receita suficiente para cobrir os custos extras e ainda bônus fiscal." 
+                                : "A expansão requer aporte adicional do tesouro municipal, pois o custo supera o incremento FUNDEB."}
+                           </p>
+                        </div>
+                     </div>
+                   </div>
+                 </ScrollArea>
+               </DialogContent>
+             </Dialog>
+           )}
+           <Badge variant="outline" className="h-fit py-1 px-3 border-accent/30 text-accent bg-accent/5 gap-2">
+             <RefreshCcw className="h-3 w-3" /> Motor de Cálculo 2026
+           </Badge>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -456,4 +539,18 @@ export default function SimuladorETIPage() {
       </div>
     </div>
   );
+}
+
+function AuditRow({ label, valA, valS }: { label: string, valA: number, valS: number }) {
+  const diff = valS - valA;
+  return (
+    <TableRow className="text-xs">
+      <TableCell className="font-medium">{label}</TableCell>
+      <TableCell className="text-right font-mono">R$ {valA.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+      <TableCell className="text-right font-mono">R$ {valS.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+      <TableCell className={`text-right font-bold ${diff >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+        {diff >= 0 ? '+' : ''}R$ {diff.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+      </TableCell>
+    </TableRow>
+  )
 }
