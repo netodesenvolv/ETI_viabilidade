@@ -62,6 +62,7 @@ interface SimulacaoResult {
   saldoSimulacao: number;
   novasMatriculasETI: number;
   reducaoVagas: number;
+  vagasParciaisRemovidas: number;
   percentualETIAnterior: number;
   percentualETINovo: number;
   viabilidade: number;
@@ -139,20 +140,25 @@ export default function SimuladorETIPage() {
       
       const novasMatriculas = { ...schoolMatriculas };
       
-      // Adiciona as novas matrículas integrais (priorizando Ensino Fundamental Anos Iniciais como padrão do simulador)
+      // Adiciona as novas matrículas integrais (Ensino Fundamental Anos Iniciais como padrão)
       novasMatriculas.ef_ai_integral = (novasMatriculas.ef_ai_integral || 0) + novasMatriculasETI;
       
-      // Lógica de Expulsão: Para dar lugar ao Integral, removemos as matrículas parciais
-      // Na ordem: EJA -> EF AF Parcial -> EF AI Parcial -> Pré Parcial -> Creche Parcial
-      let remanescenteRemover = vagasQueDevemSerLiberadas;
+      // Lista EXAUSTIVA de categorias parciais para remoção
       const categoriasParciais: (keyof EnrollmentCounts)[] = [
         'eja_fundamental',
         'eja_medio',
         'ef_af_parcial',
         'ef_ai_parcial',
         'pre_parcial',
-        'creche_parcial'
+        'creche_parcial',
+        'creche_conveniada_par',
+        'especial_aee',
+        'indigena_quilombola',
+        'campo_rural'
       ];
+
+      let totalRemovido = 0;
+      let remanescenteRemover = vagasQueDevemSerLiberadas;
 
       for (const cat of categoriasParciais) {
         if (remanescenteRemover <= 0) break;
@@ -160,18 +166,21 @@ export default function SimuladorETIPage() {
         const removiveis = Math.min(remanescenteRemover, valorAtual);
         (novasMatriculas[cat] as any) = valorAtual - removiveis;
         remanescenteRemover -= removiveis;
+        totalRemovido += removiveis;
       }
 
       // Calcula o novo total de matrículas físicas (CPFs)
       const totalMatriculasEscolaNova = Object.values(novasMatriculas).reduce((a: any, b: any) => a + (Number(b) || 0), 0);
-      const diferencaAlunosEscola = selectedSchool.total_matriculas - totalMatriculasEscolaNova;
+      const diferencaAlunosRede = selectedSchool.total_matriculas - totalMatriculasEscolaNova;
 
-      // Cálculo de Receita Simulada (Rubricas fixas vs dinâmicas conforme solicitado)
+      // Cálculos conforme regras de negócio solicitadas (algumas rubricas fixas)
       const vaafS = calcularVAAF(novasMatriculas, parametros);
-      const vaatS = vaatA; // Mantém fixo conforme regra de negócio solicitada
       const pnaeS = calcularPNAE(novasMatriculas, parametros);
-      const mdeS = mdeA; // Mantém fixo conforme regra de negócio solicitada
-      const outrosS = outrosA; // Mantém fixo conforme regra de negócio solicitada
+      
+      // VAAT, MDE e Outros são mantidos fixos na simulação de ganho líquido de ETI
+      const vaatS = vaatA; 
+      const mdeS = mdeA; 
+      const outrosS = outrosA; 
       
       const receitaSimulada = vaafS + vaatS + pnaeS + mdeS + outrosS;
       const incrementoReceitaBruto = receitaSimulada - receitaAtual;
@@ -189,7 +198,8 @@ export default function SimuladorETIPage() {
         despesaExtra,
         saldoSimulacao,
         novasMatriculasETI,
-        reducaoVagas: diferencaAlunosEscola,
+        reducaoVagas: diferencaAlunosRede,
+        vagasParciaisRemovidas: totalRemovido,
         percentualETIAnterior: selectedSchool.percentual_eti || 0,
         percentualETINovo,
         viabilidade: despesaExtra > 0 ? (incrementoReceitaBruto / despesaExtra) * 100 : 100,
@@ -372,7 +382,7 @@ export default function SimuladorETIPage() {
               <Slider 
                 value={[novasMatriculasETI]} 
                 onValueChange={(v) => setNovasMatriculasETI(v[0])} 
-                max={500} 
+                max={1000} 
                 step={1} 
               />
             </div>
@@ -436,7 +446,7 @@ export default function SimuladorETIPage() {
                       {resultado.incrementoReceitaBruto >= 0 ? <ArrowUpRight className="h-5 w-5" /> : <ArrowDownRight className="h-5 w-5" />}
                       R$ {Math.abs(resultado.incrementoReceitaBruto).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
                     </div>
-                    <p className="text-[10px] text-muted-foreground mt-1">Impacto anual bruto</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">Impacto anual bruto (ΔVAAf + ΔPNAE)</p>
                   </CardContent>
                 </Card>
 
@@ -505,7 +515,7 @@ export default function SimuladorETIPage() {
                       </div>
                       <div className="flex justify-between text-xs">
                         <span className="text-muted-foreground">Vagas Parciais Liberadas</span>
-                        <span className="font-bold text-destructive">-{resultado.reducaoVagas + resultado.novasMatriculasETI} matrículas</span>
+                        <span className="font-bold text-destructive">-{resultado.vagasParciaisRemovidas} matrículas</span>
                       </div>
                       <div className="flex justify-between text-xs pt-1 border-t">
                         <span className="text-muted-foreground">Matrículas Físicas Totais</span>
