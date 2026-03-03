@@ -442,7 +442,7 @@ export default function SimuladorETIPage() {
                   </CardContent>
                 </Card>
 
-                <Card className={`border-none shadow-sm ${resultado.saldoSimulacao >= 0 ? 'bg-green-50 border-green-200 border' : 'bg-red-50 border-red-200 border'}`}>
+                <Card className={`border-none shadow-sm ${resultado.saldoSimulacao >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
                   <CardContent className="pt-6">
                     <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Saldo Final da Expansão</div>
                     <div className={`text-2xl font-bold ${resultado.saldoSimulacao >= 0 ? 'text-green-700' : 'text-red-700'}`}>
@@ -532,23 +532,6 @@ export default function SimuladorETIPage() {
       </div>
     </div>
   );
-}
-
-function AuditRow({ label, valA, valS, help }: { label: string, valA: number, valS: number, help?: string }) {
-  const diff = valS - valA;
-  return (
-    <TableRow className="text-xs">
-      <TableCell className="font-medium">
-        <div>{label}</div>
-        {help && <div className="text-[9px] text-muted-foreground font-normal italic">{help}</div>}
-      </TableCell>
-      <TableCell className="text-right font-mono">R$ {valA.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
-      <TableCell className="text-right font-mono">R$ {valS.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
-      <TableCell className={`text-right font-bold font-mono ${diff >= 0 ? 'text-green-600' : 'text-destructive'}`}>
-        {diff >= 0 ? '+' : ''}R$ {diff.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
-      </TableCell>
-    </TableRow>
-  )
 }
 
 function AuditRow({ label, valA, valS, help }: { label: string, valA: number, valS: number, help?: string }) {
