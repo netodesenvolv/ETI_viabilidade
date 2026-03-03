@@ -143,7 +143,6 @@ export default function SimuladorETIPage() {
       // Adiciona as novas matrículas integrais (Ensino Fundamental Anos Iniciais como padrão)
       novasMatriculas.ef_ai_integral = (novasMatriculas.ef_ai_integral || 0) + novasMatriculasETI;
       
-      // Lista EXAUSTIVA de categorias parciais para remoção
       const categoriasParciais: (keyof EnrollmentCounts)[] = [
         'eja_fundamental',
         'eja_medio',
@@ -169,15 +168,13 @@ export default function SimuladorETIPage() {
         totalRemovido += removiveis;
       }
 
-      // Calcula o novo total de matrículas físicas (CPFs)
       const totalMatriculasEscolaNova = Object.values(novasMatriculas).reduce((a: any, b: any) => a + (Number(b) || 0), 0);
       const diferencaAlunosRede = selectedSchool.total_matriculas - totalMatriculasEscolaNova;
 
-      // Cálculos conforme regras de negócio solicitadas (algumas rubricas fixas)
       const vaafS = calcularVAAF(novasMatriculas, parametros);
       const pnaeS = calcularPNAE(novasMatriculas, parametros);
       
-      // VAAT, MDE e Outros são mantidos fixos na simulação de ganho líquido de ETI
+      // VAAT, MDE e Outros são mantidos fixos na simulação de ganho líquido de ETI conforme solicitado
       const vaatS = vaatA; 
       const mdeS = mdeA; 
       const outrosS = outrosA; 
@@ -267,7 +264,7 @@ export default function SimuladorETIPage() {
                          </TableRow>
                        </TableHeader>
                        <TableBody>
-                         <AuditRow label="VAAf (Ponderação Turno)" valA={resultado.detalhes.atual.vaaf} valS={resultado.detalhes.simulado.vaaf} help="Varia pelo fator ETI (Ex: 1.30)" />
+                         <AuditRow label="VAAf (Ponderação Turno)" valA={resultado.detalhes.atual.vaaf} valS={resultado.detalhes.simulado.vaaf} help="Varia pelo fator ETI e adicional AEE" />
                          <AuditRow label="PNAE (Alimentação)" valA={resultado.detalhes.atual.pnae} valS={resultado.detalhes.simulado.pnae} help="Varia pelo valor integral (R$ 1.57)" />
                          <AuditRow label="VAAT (Complementação)" valA={resultado.detalhes.atual.vaat} valS={resultado.detalhes.simulado.vaat} />
                          <AuditRow label="MDE (Recursos Próprios)" valA={resultado.detalhes.atual.mde} valS={resultado.detalhes.simulado.mde} />

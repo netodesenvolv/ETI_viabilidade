@@ -32,7 +32,7 @@ const VAAF_LABELS: Record<string, string> = {
   D2: "EF Anos Finais — Parcial",
   E1: "EJA Fundamental",
   E2: "EJA Médio",
-  F1: "Ed. Especial / AEE (adicional)",
+  F1: "Ed. Especial / AEE (ADICIONAL)",
   G1: "Multiplicador: Indígena/Quilombola",
   G2: "Multiplicador: Campo/Rural",
 };
