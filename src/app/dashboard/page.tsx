@@ -61,6 +61,7 @@ export default function DashboardPage() {
   const [copied, setCopied] = useState(false);
   const [filterLocalizacao, setFilterLocalizacao] = useState<string>("todas");
   const [filterDependencia, setFilterDependencia] = useState<string>("3");
+  const [filterETI, setFilterETI] = useState<string>("todas");
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -94,7 +95,8 @@ export default function DashboardPage() {
     const filteredSchools = schools.filter(s => {
       const matchesLocalizacao = filterLocalizacao === "todas" ? true : String(s.localizacao).toLowerCase() === filterLocalizacao.toLowerCase();
       const matchesDependencia = filterDependencia === "todas" ? true : String(s.tp_dependencia).trim() === filterDependencia;
-      return matchesLocalizacao && matchesDependencia;
+      const matchesETI = filterETI === "todas" ? true : (filterETI === "sim" ? (s.total_eti || 0) > 0 : (s.total_eti || 0) === 0);
+      return matchesLocalizacao && matchesDependencia && matchesETI;
     });
 
     const schoolAnalyses = filteredSchools.map((school: any) => {
@@ -203,7 +205,7 @@ export default function DashboardPage() {
       networkTotals: municipalRevenue,
       nativeInsights: technicalInsights
     };
-  }, [schools, allExpenses, parametros, filterLocalizacao, filterDependencia]);
+  }, [schools, allExpenses, parametros, filterLocalizacao, filterDependencia, filterETI]);
 
   const handleGenerateReport = async () => {
     if (!stats || !networkTotals) {
@@ -325,6 +327,20 @@ export default function DashboardPage() {
                 <SelectItem value="2">Estadual</SelectItem>
                 <SelectItem value="4">Privada</SelectItem>
                 <SelectItem value="todas">Todas</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border shadow-sm text-xs">
+            <GraduationCap className="h-4 w-4 text-muted-foreground" />
+            <Select value={filterETI} onValueChange={setFilterETI}>
+              <SelectTrigger className="h-8 w-[120px] border-none shadow-none focus:ring-0 font-bold">
+                <SelectValue placeholder="Escolas ETI" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todas</SelectItem>
+                <SelectItem value="sim">Com ETI</SelectItem>
+                <SelectItem value="nao">Sem ETI</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -499,7 +515,7 @@ export default function DashboardPage() {
                       </TableRow>
                     ))
                   ) : (
-                    <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground italic">Nenhum dado encontrado.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground italic">Nenhum dado encontrado com os filtros atuais.</TableCell></TableRow>
                   )}
                 </TableBody>
               </Table>
