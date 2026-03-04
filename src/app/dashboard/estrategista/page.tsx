@@ -111,7 +111,7 @@ export default function EstrategistaPage() {
       totalETI,
       pctETI,
       vaaf: totalVaaf,
-      receitaTotal,
+      receitaTotal: totalReceita,
       despesaTotal,
       saldo,
       numEscolas: municipalSchools.length
