@@ -303,7 +303,7 @@ export default function DashboardPage() {
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border shadow-sm text-xs">
             <Filter className="h-4 w-4 text-muted-foreground" />
-            <Select value={filterLocalizacao} onValueChange={setFilterLocalizacao}>
+            <Select value={filterLocalizacao} onValueChange={setFilterLocalLocalizacao}>
               <SelectTrigger className="h-8 w-[100px] border-none shadow-none focus:ring-0 font-bold">
                 <SelectValue placeholder="Local" />
               </SelectTrigger>
@@ -465,6 +465,35 @@ export default function DashboardPage() {
 
                                   <section className="space-y-3">
                                     <h4 className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-2">
+                                      <Users className="h-3 w-3" /> Microdados de Matrículas (Censo 2025)
+                                    </h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                      <div className="space-y-2">
+                                        <p className="text-[10px] font-bold text-muted-foreground uppercase">Infantil</p>
+                                        <DataField label="Creche Integral" value={school.matriculas?.creche_integral} />
+                                        <DataField label="Creche Parcial" value={school.matriculas?.creche_parcial} />
+                                        <DataField label="Pré Integral" value={school.matriculas?.pre_integral} />
+                                        <DataField label="Pré Parcial" value={school.matriculas?.pre_parcial} />
+                                      </div>
+                                      <div className="space-y-2">
+                                        <p className="text-[10px] font-bold text-muted-foreground uppercase">Fundamental</p>
+                                        <DataField label="AI Integral" value={school.matriculas?.ef_ai_integral} />
+                                        <DataField label="AI Parcial" value={school.matriculas?.ef_ai_parcial} />
+                                        <DataField label="AF Integral" value={school.matriculas?.ef_af_integral} />
+                                        <DataField label="AF Parcial" value={school.matriculas?.ef_af_parcial} />
+                                      </div>
+                                      <div className="space-y-2">
+                                        <p className="text-[10px] font-bold text-muted-foreground uppercase">Outros / Especial</p>
+                                        <DataField label="EJA" value={school.matriculas?.eja_fundamental} />
+                                        <DataField label="AEE Inclusão" value={school.matriculas?.especial_aee} />
+                                      </div>
+                                    </div>
+                                  </section>
+
+                                  <Separator />
+
+                                  <section className="space-y-3">
+                                    <h4 className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-2">
                                       <TrendingUp className="h-3 w-3" /> Composição de Receitas (VAAf {parametros.fatores.C1.toFixed(2)} / {parametros.fatores.D2.toFixed(2)})
                                     </h4>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -573,4 +602,15 @@ function RevenueDetailItem({ label, value }: { label: string, value: number }) {
       <span className="text-xs font-mono font-bold">R$ {value.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</span>
     </div>
   );
+}
+
+function DataField({ label, value }: { label: string, value: any }) {
+  return (
+    <div className="flex justify-between items-center p-2 rounded-lg bg-muted/10 border border-transparent hover:border-muted-foreground/10 transition-colors">
+      <span className="text-[10px] text-muted-foreground">{label}</span>
+      <span className={`font-mono text-[11px] font-bold ${value > 0 ? 'text-primary' : 'text-muted-foreground/30'}`}>
+        {value || 0}
+      </span>
+    </div>
+  )
 }
