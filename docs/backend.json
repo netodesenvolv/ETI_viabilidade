@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "UserProfile": {
@@ -47,6 +48,20 @@
         "fatores": { "type": "object" },
         "pnae": { "type": "object" }
       }
+    },
+    "EtiStrategy": {
+      "title": "Estratégia ETI",
+      "description": "Roteiro estratégico gerado por IA para expansão da rede.",
+      "type": "object",
+      "properties": {
+        "municipioId": { "type": "string" },
+        "metaDesejada": { "type": "number" },
+        "prazoAnos": { "type": "number" },
+        "prioridade": { "type": "string" },
+        "observacoes": { "type": "string" },
+        "report": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "auth": {
@@ -68,6 +83,10 @@
     "/municipios/{municipioId}/config/parameters": {
       "schema": { "$ref": "#/backend/entities/FundingParameters" },
       "description": "Parâmetros de financiamento customizados por prefeitura"
+    },
+    "/municipios/{municipioId}/strategies/{strategyId}": {
+      "schema": { "$ref": "#/backend/entities/EtiStrategy" },
+      "description": "Histórico de roteiros estratégicos gerados pela IA"
     }
   }
 }

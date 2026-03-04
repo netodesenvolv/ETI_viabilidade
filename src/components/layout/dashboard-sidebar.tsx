@@ -14,7 +14,9 @@ import {
   LogOut,
   Calculator,
   Building2,
-  FileJson
+  FileJson,
+  Sparkles,
+  Map
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
@@ -37,6 +39,7 @@ import { useToast } from "@/hooks/use-toast"
 
 const menuItems = [
   { title: "Painel Executivo", icon: LayoutDashboard, href: "/dashboard" },
+  { title: "Estrategista ETI", icon: Sparkles, href: "/dashboard/estrategista" },
   { title: "Parâmetros 2026", icon: Settings, href: "/dashboard/parametros" },
   { title: "Censo Escolar", icon: Database, href: "/dashboard/censo" },
   { title: "Mapa de Receitas", icon: CreditCard, href: "/dashboard/receitas" },
@@ -74,7 +77,6 @@ export function DashboardSidebar() {
     }
   };
 
-  // Filtra itens de menu baseados na role do usuário
   const filteredMenuItems = menuItems.filter(item => {
     if (item.adminOnly && profile?.role !== 'Admin') return false;
     return true;
