@@ -303,7 +303,7 @@ export default function DashboardPage() {
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border shadow-sm text-xs">
             <Filter className="h-4 w-4 text-muted-foreground" />
-            <Select value={filterLocalizacao} onValueChange={setFilterLocalLocalizacao}>
+            <Select value={filterLocalizacao} onValueChange={setFilterLocalizacao}>
               <SelectTrigger className="h-8 w-[100px] border-none shadow-none focus:ring-0 font-bold">
                 <SelectValue placeholder="Local" />
               </SelectTrigger>
