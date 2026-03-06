@@ -9,35 +9,17 @@ runConfig:
 
 env:
   - variable: NEXT_PUBLIC_FIREBASE_API_KEY
-    value: "pendente"
-    availability:
-      - BUILD
-      - RUNTIME
+    value: "AIzaSy..." # Substitua pelo valor real se desejar automatizar
   - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
-    value: "pendente"
-    availability:
-      - BUILD
-      - RUNTIME
+    value: "studio-6010766644-addb1.firebaseapp.com"
   - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
-    value: "pendente"
-    availability:
-      - BUILD
-      - RUNTIME
+    value: "studio-6010766644-addb1"
   - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
-    value: "pendente"
-    availability:
-      - BUILD
-      - RUNTIME
+    value: "studio-6010766644-addb1.firebasestorage.app"
   - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
-    value: "pendente"
-    availability:
-      - BUILD
-      - RUNTIME
+    value: ""
   - variable: NEXT_PUBLIC_FIREBASE_APP_ID
-    value: "pendente"
-    availability:
-      - BUILD
-      - RUNTIME
+    value: ""
   - variable: GEMINI_API_KEY
     secret: GEMINI_API_KEY
     availability:
