@@ -16,7 +16,7 @@ Seu terminal diz "Your branch is ahead of origin/main". Isso significa que as co
 1. Vá ao [Google Cloud Console](https://console.cloud.google.com/).
 2. Procure por **Secret Manager**.
 3. Crie um segredo chamado: `GEMINI_API_KEY`.
-4. O valor deve ser a sua API Key do [Google AI Studio](https://aistudio.google.com/).
+4. O valor deve ser a sua API Key do [Google AI Studio](https://google.com/ai/studio).
 5. Conceda a permissão de "Acessador de Segredos" para a conta de serviço do App Hosting (geralmente termina em `@gcp-sa-apphosting.iam.gserviceaccount.com`).
 
 ### 🌐 Configuração de Domínio (etiviabilidade.com)
