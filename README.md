@@ -9,9 +9,9 @@ Acompanhe o desenvolvimento em: [https://github.com/netodesenvolv/ETI_viabilidad
 
 ### 1. Corrigir o erro de Build (Sua tela atual):
 O arquivo `apphosting.yaml` foi corrigido para o formato padrão exigido pelo Google. Agora, basta você fazer o commit e push das alterações:
-- `git add .`
-- `git commit -m "fix: corrige formato do apphosting.yaml"`
-- `git push`
+1. `git add .`
+2. `git commit -m "fix: corrige formato do apphosting.yaml"`
+3. `git push`
 
 ### 2. Configurar o Secret Manager (OBRIGATÓRIO para a IA funcionar):
 Como você está usando o plano Blaze, você **precisa** configurar a chave no Google Cloud para que o link externo funcione:
@@ -24,7 +24,7 @@ Como você está usando o plano Blaze, você **precisa** configurar a chave no G
 ### 🌐 Configuração de Domínio (etiviabilidade.com)
 Após o término do build (que leva uns 3-5 minutos):
 1. No menu lateral, vá em **App Hosting**.
-2. Clique no seu backend `edufin-insight`.
+2. Clique no seu backend `edufin-insights`.
 3. Vá na aba **Configurações** > **Domínios**.
 4. Adicione `etiviabilidade.com` e siga as instruções de DNS.
 
