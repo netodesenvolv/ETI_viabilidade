@@ -1,13 +1,16 @@
-# Configurações para o Firebase App Hosting
+# Configurações oficiais para o Firebase App Hosting
 # Documentação: https://firebase.google.com/docs/app-hosting/configure
+
+kind: "AppHostingConfig"
+schemaVersion: "v1"
 
 runConfig:
   # Instâncias para garantir performance sem custo excessivo
   minInstances: 0
   maxInstances: 3
-  # Memória aumentada para processamento de relatórios pesados de IA
-  memory: 1Gi
-  # Timeout estendido para 60s devido às chamadas de IA (Genkit/Gemini)
+  # Memória configurada em MiB conforme o esquema v1
+  memoryMiB: 1024
+  # Timeout em segundos
   timeoutSeconds: 60
 
 env:
