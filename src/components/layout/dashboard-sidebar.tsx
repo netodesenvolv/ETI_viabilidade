@@ -1,4 +1,3 @@
-
 "use client"
 
 import * as React from "react"
@@ -52,6 +51,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Card } from "@/components/ui/card"
 
 const menuItems = [
   { title: "Painel Executivo", icon: LayoutDashboard, href: "/dashboard" },
