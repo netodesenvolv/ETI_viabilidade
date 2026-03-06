@@ -1,6 +1,2 @@
 runConfig:
   runtime: nodejs20
-
-env:
-  - variable: GEMINI_API_KEY
-    secret: GEMINI_API_KEY
