@@ -1,4 +1,4 @@
-# EduFin Insights - Plataforma de Gestão ETI (v1.0-Pro)
+# EduFin Insights - Plataforma de Gestão ETI (v1.1-Pro)
 
 Este é um sistema avançado para análise de viabilidade financeira e técnica de **Escolas em Tempo Integral (ETI)** para redes municipais de educação, focado nos parâmetros do **FUNDEB 2026**.
 
@@ -8,17 +8,21 @@ Acompanhe o desenvolvimento em: [https://github.com/netodesenvolv/ETI_viabilidad
 ## Funcionalidades Implementadas (Versão Atual)
 
 ### 🧠 Inteligência Artificial (Genkit + Gemini 2.5 Flash)
-- **Estrategista ETI:** Geração de roteiros estratégicos personalizados com cronogramas plurianuais, análise de impacto fiscal e sugestões de captação (VAAR/PDDE).
+- **Estrategista ETI:** Geração de roteiros estratégicos personalizados com cronogramas plurianuais, análise de impacto fiscal e sugestões de captação (VAAR/PDDE). Localizado em uma página dedicada para planejamento de longo prazo.
 - **Diagnóstico Executivo:** Narrativas técnicas automatizadas no Painel Executivo e Análise Custo-Aluno para apresentações em Secretarias de Finanças e CACS.
+
+### 🗺️ Gestão Inteligente de Localidades (API IBGE)
+- **Busca Preditiva:** Integração com a API de Localidades do IBGE para preenchimento automático de Código IBGE e UF durante o cadastro de usuários ou vínculo de municípios.
+- **Alternador de Município (Admin):** Usuários com perfil de Administrador Geral podem trocar sua visão de rede instantaneamente, permitindo auditar e planejar para qualquer cidade da base nacional.
 
 ### 📊 Simulador de Expansão de Alta Precisão
 - **Modelagem 1:1 e 1:2:** Projeção de impacto físico e financeiro ao converter turmas parciais em integrais.
 - **Redimensionamento Operacional:** Recálculo automático de custos variáveis (merenda, transporte, utilidades) baseado na nova ocupação da escola, mantendo a folha de pagamento fixa.
-- **Auditoria de Viabilidade:** Comparativo detalhado de rubricas antes e depois da expansão.
+- **Auditoria de Viabilidade:** Comparativo detalhado de rubricas de receita (VAAF/PNAE) e despesas antes e depois da expansão.
 
 ### 🏦 Motor de Cálculo FUNDEB 2026
 - **Regra AEE Adicional:** Implementação da lógica de dupla matrícula onde o aluno de inclusão recebe o peso da etapa regular (ex: 1,10) **MAIS** o adicional de 1,40 (Total 2,50).
-- **PNAE por CPF Único:** Garantia de que alunos de inclusão não dupliquem o custo da merenda escolar.
+- **PNAE por CPF Único:** Garantia de que alunos de inclusão não dupliquem o custo da merenda escolar, corrigindo distorções comuns em planilhas manuais.
 - **Rateio Municipal:** Ferramenta para distribuir custos centralizados (Transporte/Merenda) proporcionalmente por matrícula entre as unidades.
 
 ### 🛠️ Gestão de Dados e Admin
@@ -32,13 +36,14 @@ Acompanhe o desenvolvimento em: [https://github.com/netodesenvolv/ETI_viabilidad
 - **UI Components:** Radix UI, Shadcn UI.
 - **Backend/Database:** Firebase (Auth, Firestore).
 - **IA/LLM:** Genkit com Google Gemini 2.5 Flash.
+- **APIs Externas:** IBGE Localidades (v1).
 
 ## Como Comitar e Atualizar o GitHub
 
 Sempre que concluir uma rodada de melhorias, execute no seu terminal:
 
 1. `git add .`
-2. `git commit -m "feat: implementado estrategista ia e refinamento de calculo aee"`
+2. `git commit -m "feat: estrategista IA, busca ibge e alternador de municipio para admin"`
 3. `git push`
 
 ---
