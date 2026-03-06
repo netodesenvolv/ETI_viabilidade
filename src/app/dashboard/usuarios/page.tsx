@@ -1,12 +1,12 @@
 
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { UserPlus, UserCog, Mail, Shield, Trash2, Search, Loader2, MapPin, Lock, ShieldAlert } from "lucide-react"
+import { UserPlus, UserCog, Mail, Shield, Trash2, Search, Loader2, MapPin, Lock, ShieldAlert, Check } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import {
   Dialog,
@@ -30,6 +30,20 @@ import { useCollection, useFirestore, useAuth, useUser, useDoc } from "@/firebas
 import { collection, doc, setDoc, deleteDoc } from "firebase/firestore"
 import { errorEmitter } from '@/firebase/error-emitter'
 import { FirestorePermissionError } from '@/firebase/errors'
+import { ScrollArea } from "@/components/ui/scroll-area"
+
+interface IBGECity {
+  id: number;
+  nome: string;
+  microrregiao: {
+    mesorregiao: {
+      UF: {
+        sigla: string;
+        nome: string;
+      }
+    }
+  }
+}
 
 export default function UsuariosPage() {
   const { toast } = useToast()
@@ -46,14 +60,58 @@ export default function UsuariosPage() {
   const [isAdding, setIsAdding] = useState(false)
   const [isOpen, setIsOpen] = useState(false)
 
+  // Estados para busca de cidades
+  const [cityQuery, setCityQuery] = useState("")
+  const [cityResults, setCityResults] = useState<IBGECity[]>([])
+  const [isSearchingCity, setIsSearchingCity] = useState(false)
+
   const [newUser, setNewUser] = useState({
     name: "",
     email: "",
     password: "",
     role: "Leitor",
     municipio: "",
-    municipioId: ""
+    municipioId: "",
+    uf: ""
   })
+
+  // Efeito para buscar cidades na API do IBGE
+  useEffect(() => {
+    const searchCities = async () => {
+      if (cityQuery.length < 3) {
+        setCityResults([]);
+        return;
+      }
+      setIsSearchingCity(true);
+      try {
+        const response = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/municipios?nome=${cityQuery}`);
+        const data = await response.json();
+        // A API retorna muitos resultados, filtramos para os que começam com a query para ser mais preciso
+        const filtered = data
+          .filter((c: any) => c.nome.toLowerCase().includes(cityQuery.toLowerCase()))
+          .slice(0, 5);
+        setCityResults(filtered);
+      } catch (e) {
+        console.error("Erro ao buscar cidades", e);
+      } finally {
+        setIsSearchingCity(false);
+      }
+    };
+
+    const timer = setTimeout(searchCities, 400);
+    return () => clearTimeout(timer);
+  }, [cityQuery]);
+
+  const handleSelectCity = (city: IBGECity) => {
+    setNewUser({
+      ...newUser,
+      municipio: city.nome,
+      municipioId: city.id.toString(),
+      uf: city.microrregiao.mesorregiao.UF.sigla
+    });
+    setCityQuery(city.nome);
+    setCityResults([]);
+  }
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -86,6 +144,7 @@ export default function UsuariosPage() {
         role: newUser.role,
         municipio: newUser.municipio,
         municipioId: newUser.municipioId,
+        uf: newUser.uf,
         status: "Ativo",
         createdAt: new Date().toISOString()
       }
@@ -93,7 +152,8 @@ export default function UsuariosPage() {
       await setDoc(userRef, userData);
 
       setIsOpen(false)
-      setNewUser({ name: "", email: "", password: "", role: "Leitor", municipio: "", municipioId: "" })
+      setNewUser({ name: "", email: "", password: "", role: "Leitor", municipio: "", municipioId: "", uf: "" })
+      setCityQuery("");
       toast({
         title: "Usuário cadastrado",
         description: `O acesso para ${userData.name} foi criado com sucesso no município de ${userData.municipio}.`,
@@ -138,7 +198,7 @@ export default function UsuariosPage() {
       <div className="h-[60vh] flex flex-col items-center justify-center text-center p-8 space-y-4">
         <ShieldAlert className="h-12 w-12 text-destructive/50" />
         <h3 className="text-xl font-bold text-primary font-headline">Acesso Restrito</h3>
-        <p className="text-muted-foreground max-w-sm">
+        <p className="text-muted-foreground max-sm">
           Apenas Administradores Gerais podem gerenciar permissões e convites de novos usuários.
         </p>
       </div>
@@ -209,28 +269,62 @@ export default function UsuariosPage() {
                   />
                 </div>
               </div>
+              
+              <div className="space-y-2 relative">
+                <Label htmlFor="city-search">Buscar Município</Label>
+                <div className="relative">
+                  <MapPin className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input 
+                    id="city-search"
+                    placeholder="Digite o nome da cidade..."
+                    className="pl-9"
+                    value={cityQuery}
+                    onChange={(e) => setCityQuery(e.target.value)}
+                    autoComplete="off"
+                  />
+                  {isSearchingCity && <Loader2 className="absolute right-3 top-2.5 h-4 w-4 animate-spin text-muted-foreground" />}
+                </div>
+                
+                {cityResults.length > 0 && (
+                  <Card className="absolute z-50 w-full mt-1 shadow-xl border-primary/20">
+                    <ScrollArea className="max-h-[200px]">
+                      <div className="p-1">
+                        {cityResults.map((city) => (
+                          <button
+                            key={city.id}
+                            type="button"
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-primary/10 rounded-md transition-colors flex justify-between items-center"
+                            onClick={() => handleSelectCity(city)}
+                          >
+                            <span>{city.nome} - {city.microrregiao.mesorregiao.UF.sigla}</span>
+                            <span className="text-[10px] text-muted-foreground font-mono">{city.id}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </Card>
+                )}
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="municipio">Município</Label>
+                  <Label>Município Selecionado</Label>
                   <Input 
-                    id="municipio" 
-                    placeholder="Ex: São João" 
                     value={newUser.municipio}
-                    onChange={(e) => setNewUser({...newUser, municipio: e.target.value})}
-                    required 
+                    readOnly
+                    className="bg-muted text-xs font-bold"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="municipioId">Cód. IBGE</Label>
+                  <Label>Código IBGE</Label>
                   <Input 
-                    id="municipioId" 
-                    placeholder="Ex: 3162500" 
                     value={newUser.municipioId}
-                    onChange={(e) => setNewUser({...newUser, municipioId: e.target.value})}
-                    required 
+                    readOnly
+                    className="bg-muted text-xs font-mono"
                   />
                 </div>
               </div>
+
               <div className="space-y-2">
                 <Label htmlFor="role">Perfil de Acesso</Label>
                 <Select 
@@ -248,7 +342,7 @@ export default function UsuariosPage() {
                 </Select>
               </div>
               <DialogFooter className="pt-4">
-                <Button type="submit" className="w-full" disabled={isAdding}>
+                <Button type="submit" className="w-full" disabled={isAdding || !newUser.municipioId}>
                   {isAdding ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : "Finalizar Cadastro"}
                 </Button>
               </DialogFooter>

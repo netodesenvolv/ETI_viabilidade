@@ -1,7 +1,7 @@
 
 "use client"
 
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,9 +12,19 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth, useFirestore, useUser, useDoc } from "@/firebase";
 import { doc, setDoc, writeBatch } from "firebase/firestore";
-import { errorEmitter } from '@/firebase/error-emitter';
-import { FirestorePermissionError } from '@/firebase/errors';
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+
+interface IBGECity {
+  id: number;
+  nome: string;
+  microrregiao: {
+    mesorregiao: {
+      UF: {
+        sigla: string;
+        nome: string;
+      }
+    }
+  }
+}
 
 interface ParsedSchool {
   id: string;
@@ -57,9 +67,45 @@ export default function CensoAdminPage() {
   const { data: profile } = useDoc(userProfileRef);
   const municipioId = profile?.municipioId;
 
+  // Estados para busca de cidades via API IBGE
   const [manualCity, setManualCity] = useState("");
   const [manualIbge, setManualIbge] = useState("");
+  const [manualUf, setManualUf] = useState("");
+  const [cityResults, setCityResults] = useState<IBGECity[]>([]);
+  const [isSearchingCity, setIsSearchingCity] = useState(false);
   const [linking, setLinking] = useState(false);
+
+  useEffect(() => {
+    const searchCities = async () => {
+      if (manualCity.length < 3 || manualIbge !== "") {
+        setCityResults([]);
+        return;
+      }
+      setIsSearchingCity(true);
+      try {
+        const response = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/municipios?nome=${manualCity}`);
+        const data = await response.json();
+        const filtered = data
+          .filter((c: any) => c.nome.toLowerCase().includes(manualCity.toLowerCase()))
+          .slice(0, 5);
+        setCityResults(filtered);
+      } catch (e) {
+        console.error("Erro ao buscar cidades", e);
+      } finally {
+        setIsSearchingCity(false);
+      }
+    };
+
+    const timer = setTimeout(searchCities, 400);
+    return () => clearTimeout(timer);
+  }, [manualCity, manualIbge]);
+
+  const handleSelectCity = (city: IBGECity) => {
+    setManualCity(city.nome);
+    setManualIbge(city.id.toString());
+    setManualUf(city.microrregiao.mesorregiao.UF.sigla);
+    setCityResults([]);
+  }
 
   const handleManualLink = async () => {
     if (!db || !user || !manualIbge) return;
@@ -68,6 +114,7 @@ export default function CensoAdminPage() {
       await setDoc(doc(db, 'users', user.uid), {
         municipio: manualCity,
         municipioId: manualIbge,
+        uf: manualUf,
         role: "Admin",
         status: "Ativo"
       }, { merge: true });
@@ -91,7 +138,7 @@ export default function CensoAdminPage() {
 
     for (let i = 1; i < lines.length; i++) {
       if (!lines[i].trim()) continue;
-      const values = lineToValues(lines[i], separator);
+      const values = lines[i].split(separator).map(v => v.trim().replace(/"/g, ''));
       const row: Record<string, string> = {};
       headers.forEach((header, index) => { row[header] = values[index]; });
       
@@ -139,10 +186,6 @@ export default function CensoAdminPage() {
     return schools;
   };
 
-  const lineToValues = (line: string, sep: string) => {
-    return line.split(sep).map(v => v.trim().replace(/"/g, ''));
-  };
-
   const handleStartImport = () => {
     const file = fileInputRef.current?.files?.[0];
     if (!file) {
@@ -167,7 +210,6 @@ export default function CensoAdminPage() {
     if (!db || !municipioId) return;
     setConsolidating(true);
     try {
-      // Chunking para garantir performance no município individual
       for (let i = 0; i < parsedSchools.length; i += 500) {
         const batch = writeBatch(db);
         const chunk = parsedSchools.slice(i, i + 500);
@@ -213,14 +255,41 @@ export default function CensoAdminPage() {
           <AlertCircle className="h-5 w-5" />
           <AlertTitle className="font-bold">Perfil Incompleto</AlertTitle>
           <AlertDescription className="space-y-4">
-            <p>Sua conta não tem um município vinculado. Informe os dados abaixo para gerenciar sua rede:</p>
-            <div className="flex flex-col sm:flex-row gap-2 max-w-xl">
-              <Input placeholder="Nome da Cidade" value={manualCity} onChange={e => setManualCity(e.target.value)} className="bg-white border-red-200" />
-              <Input placeholder="Cód. IBGE" value={manualIbge} onChange={e => setManualIbge(e.target.value)} className="bg-white border-red-200" />
-              <Button onClick={handleManualLink} disabled={linking} variant="destructive" className="gap-2">
-                {linking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                Vincular Minha Conta
-              </Button>
+            <p>Sua conta não tem um município vinculado. Informe o nome da cidade abaixo:</p>
+            <div className="flex flex-col space-y-2 max-w-xl relative">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="relative flex-1">
+                  <Input 
+                    placeholder="Nome da Cidade (ex: Teixeira de Freitas)" 
+                    value={manualCity} 
+                    onChange={e => { setManualCity(e.target.value); setManualIbge(""); }} 
+                    className="bg-white border-red-200"
+                  />
+                  {isSearchingCity && <Loader2 className="absolute right-3 top-2.5 h-4 w-4 animate-spin text-red-400" />}
+                </div>
+                <Input placeholder="Cód. IBGE" value={manualIbge} readOnly className="bg-muted border-red-200 w-full sm:w-32 font-mono text-xs" />
+                <Button onClick={handleManualLink} disabled={linking || !manualIbge} variant="destructive" className="gap-2">
+                  {linking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  Vincular Conta
+                </Button>
+              </div>
+
+              {cityResults.length > 0 && (
+                <Card className="absolute z-50 w-full top-12 shadow-xl border-red-200 overflow-hidden">
+                  <div className="p-1">
+                    {cityResults.map((city) => (
+                      <button
+                        key={city.id}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-red-50 transition-colors flex justify-between items-center"
+                        onClick={() => handleSelectCity(city)}
+                      >
+                        <span className="font-medium">{city.nome} - {city.microrregiao.mesorregiao.UF.sigla}</span>
+                        <span className="text-[10px] text-muted-foreground font-mono">{city.id}</span>
+                      </button>
+                    ))}
+                  </div>
+                </Card>
+              )}
             </div>
           </AlertDescription>
         </Alert>
