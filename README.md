@@ -7,9 +7,9 @@ Acompanhe o desenvolvimento em: [https://github.com/netodesenvolv/ETI_viabilidad
 
 ## ☁️ Guia de Implantação (Firebase App Hosting)
 
-### 1. Corrigir o erro de Build:
-Seu terminal diz "Your branch is ahead of origin/main by 2 commits". Isso significa que as correções já estão prontas no seu computador, mas o Firebase (GitHub) ainda não as recebeu.
-**Execute o comando abaixo agora:**
+### 1. Corrigir o erro de Build (IMPORTANTE):
+Seu terminal diz "Your branch is ahead of origin/main". Isso significa que as correções já estão prontas no seu computador, mas o Firebase ainda não as recebeu.
+**Execute o comando abaixo agora para destravar o build:**
 - `git push`
 
 ### 2. Configurar o Secret Manager (OBRIGATÓRIO para a IA):
@@ -23,7 +23,7 @@ Seu terminal diz "Your branch is ahead of origin/main by 2 commits". Isso signif
 1. No Console do Firebase, vá em **App Hosting**.
 2. Clique no seu backend `edufin-insights`.
 3. Vá na aba **Configurações** > **Domínios**.
-4. Adicione `etiviabilidade.com` e siga as instruções de DNS (Registros A e TXT).
+4. Adicione `etiviabilidade.com` e siga as instruções de DNS.
 
 ---
 
