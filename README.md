@@ -24,32 +24,25 @@ Acompanhe o desenvolvimento em: [https://github.com/netodesenvolv/ETI_viabilidad
 - **Regra AEE Adicional:** Lógica de dupla matrícula (Fator Etapa + 1,40).
 - **PNAE por CPF Único:** Garantia de que alunos de inclusão não dupliquem o custo da merenda escolar.
 
-## 🌐 Deploy em Produção (Ambiente Externo)
+## 🌐 Deploy e Link de Acesso (Firebase App Hosting)
 
-Esta aplicação está preparada para o **Firebase App Hosting**.
+Após realizar o `git push`, o Firebase inicia o processo de deploy automaticamente.
 
-### Checklist Final de Deploy:
+### Como obter seu Link de Produção:
 
-1. **Configurar Segredos (Obrigatório):** 
-   - No Google Cloud Console, vá em **Secret Manager**.
-   - Crie um segredo chamado `GEMINI_API_KEY` e insira sua chave do Google AI Studio.
-   - Conceda permissão de "Acessador de Segredos" para a conta de serviço do App Hosting.
+1. **Acesse o Console do Firebase:** [https://console.firebase.google.com/](https://console.firebase.google.com/)
+2. **Selecione seu Projeto:** Clique no projeto "EduFin Insights".
+3. **Vá em App Hosting:** No menu lateral esquerdo, procure por "Build" e depois **"App Hosting"**.
+4. **Verifique o Status:** Você verá um card com o nome do seu backend (ex: `eti-viabilidade`). Aguarde o status mudar de "In progress" para "Success".
+5. **Clique na URL:** Abaixo do nome do seu backend, aparecerá um link terminando em `.web.app` ou `.firebaseapp.com`. **Este é o seu link de acesso externo oficial.**
 
-2. **Conectar Repositório:** 
-   - No Console do Firebase, vá em "App Hosting".
-   - Conecte seu repositório do GitHub.
-   - O Firebase detectará o arquivo `apphosting.yaml` e iniciará o build automaticamente.
+### Checklist de Configuração (Secret Manager):
 
-3. **Variáveis de Ambiente (Públicas):** 
-   - Configure as variáveis `NEXT_PUBLIC_FIREBASE_*` no painel do App Hosting para que o Firebase Client funcione corretamente no navegador.
-
-### Comandos de Terminal para Envio:
-
-```bash
-git add .
-git commit -m "release: v1.5-pro - estrategista IA, simulador 1:2 e integração IBGE"
-git push origin main
-```
+Antes do link funcionar 100%, você deve garantir que sua chave de IA está configurada no Google Cloud:
+1. Vá no **Secret Manager** do Google Cloud.
+2. Crie um segredo chamado `GEMINI_API_KEY`.
+3. Adicione o valor da sua chave do AI Studio.
+4. Dê permissão de "Secret Manager Secret Accessor" para a conta de serviço que o App Hosting criou.
 
 ---
 Desenvolvido como protótipo de alta fidelidade para gestão estratégica de redes municipais de educação.
