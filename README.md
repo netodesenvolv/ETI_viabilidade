@@ -3,30 +3,30 @@
 Este é um sistema avançado para análise de viabilidade financeira e técnica de **Escolas em Tempo Integral (ETI)** para redes municipais de educação, focado nos parâmetros do **FUNDEB 2026**.
 
 ## 🚀 Repositório Oficial
-Acompanhe o desenvolvimento em: [https://github.com/netodesenvolv/ETI_viabilidade](https://github.com/netodesenvolv/ETI_viabilidade)
+Acompanhe o desenvolvimento em: [https://github.com/netodesenvolv/ETI_viabilidade]
 
 ## ☁️ Guia de Implantação (Firebase App Hosting)
 
-### 1. Corrigir o erro de Build (Sua tela atual):
-O arquivo `apphosting.yaml` foi corrigido para o formato padrão exigido pelo Google. Agora, basta você fazer o commit e push das alterações:
-1. `git add .`
-2. `git commit -m "fix: corrige formato do apphosting.yaml"`
-3. `git push`
+### 1. Corrigir o erro de Build:
+O arquivo `apphosting.yaml` foi ajustado para incluir o campo `value` obrigatório. Para que o build funcione:
+1. Certifique-se de preencher as chaves do Firebase no arquivo `apphosting.yaml` ou configure-as como **Segredos** no Console do Firebase.
+2. Faça o push das alterações:
+   - `git add .`
+   - `git commit -m "fix: adiciona campos obrigatórios ao apphosting.yaml"`
+   - `git push`
 
-### 2. Configurar o Secret Manager (OBRIGATÓRIO para a IA funcionar):
-Como você está usando o plano Blaze, você **precisa** configurar a chave no Google Cloud para que o link externo funcione:
+### 2. Configurar o Secret Manager (OBRIGATÓRIO para a IA):
 1. Vá ao [Google Cloud Console](https://console.cloud.google.com/).
 2. Procure por **Secret Manager**.
 3. Crie um segredo chamado: `GEMINI_API_KEY`.
 4. O valor deve ser a sua API Key do [Google AI Studio](https://aistudio.google.com/).
-5. Dê permissão de "Acessador de Segredos" para a conta de serviço do App Hosting.
+5. Conceda a permissão de "Acessador de Segredos" para a conta de serviço do App Hosting (geralmente termina em `@gcp-sa-apphosting.iam.gserviceaccount.com`).
 
 ### 🌐 Configuração de Domínio (etiviabilidade.com)
-Após o término do build (que leva uns 3-5 minutos):
-1. No menu lateral, vá em **App Hosting**.
+1. No Console do Firebase, vá em **App Hosting**.
 2. Clique no seu backend `edufin-insights`.
 3. Vá na aba **Configurações** > **Domínios**.
-4. Adicione `etiviabilidade.com` e siga as instruções de DNS.
+4. Adicione `etiviabilidade.com` e siga as instruções de DNS (Registros A e TXT).
 
 ---
 
