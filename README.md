@@ -5,31 +5,29 @@ Este é um sistema avançado para análise de viabilidade financeira e técnica 
 ## 🚀 Repositório Oficial
 Acompanhe o desenvolvimento em: [https://github.com/netodesenvolv/ETI_viabilidade](https://github.com/netodesenvolv/ETI_viabilidade)
 
-## ☁️ Deploy Moderno (Firebase App Hosting) - IMPORTANTE
+## ☁️ Deploy Moderno (Firebase App Hosting) - PASSO A PASSO FINAL
 
-A imagem que você vê no console (Aguardando sua primeira versão) refere-se ao Hosting tradicional. **Para este projeto, você deve usar o APP HOSTING**.
+Conforme sua tela de configuração, preencha os campos exatamente assim para concluir:
 
-### Passo a Passo para Ativar o Link Externo:
+### 1. Configurações de Implantação (Sua tela atual):
+- **Ramificação ativa:** Digite `main` (ou a branch que você está usando no GitHub).
+- **Diretório raiz do app:** Mantenha como `/`.
+- **Lançamentos automáticos:** Deixe ativado (azul).
+- **Avançar:** Clique no botão para prosseguir.
 
-1. **Vá para o Menu Correto:** No Console do Firebase, no menu lateral esquerdo, clique em **Build (Criação)** e depois em **App Hosting** (fica logo abaixo do Hosting tradicional).
-2. **Criar um Backend:** Clique em "Começar" ou "Adicionar Backend".
-3. **Conectar ao GitHub:**
-   - Selecione sua conta do GitHub.
-   - Escolha o repositório `ETI_viabilidade`.
-4. **Configurações de Build:**
-   - Nome do Backend: `edufin-insights`
-   - Região: `us-central1` (ou a de sua preferência).
-   - Branch: `main` (ou a que você está usando).
-5. **Finalizar:** Clique em "Concluir".
+### 2. Configurações de Build (Próxima tela):
+- **Nome do Backend:** `edufin-insights`
+- **Região:** Mantenha `us-east4` (conforme você selecionou anteriormente).
+- **Finalizar:** Clique em "Concluir".
 
 **O que acontece agora?**
-O Firebase vai detectar seu arquivo `apphosting.yaml` e `package.json`, rodar o build nos servidores do Google e gerar um **novo link** automático. É neste novo link (dentro da aba App Hosting) que a Inteligência Artificial e o Banco de Dados funcionarão corretamente.
+O Firebase vai detectar seu arquivo `apphosting.yaml`, rodar o build nos servidores do Google e gerar um **link automático**. Você poderá acompanhar o progresso na aba "App Hosting".
 
 ### 🌐 Configuração de Domínio (etiviabilidade.com)
-Após criar o backend no **App Hosting**:
+Após o build terminar com sucesso:
 1. Dentro da aba **App Hosting**, vá em **Configurações**.
 2. Clique em **Domínios** e adicione `etiviabilidade.com`.
-3. Siga as instruções de DNS (Registros A e TXT) que aparecerão lá.
+3. Siga as instruções de DNS (Registros A e TXT) que aparecerão lá na sua registradora de domínio.
 
 ---
 
@@ -45,7 +43,7 @@ Após criar o backend no **App Hosting**:
 
 ---
 
-## Checklist de Produção (Secret Manager)
+## Checklist de Produção (Secret Manager) - OBRIGATÓRIO
 
 Para que a IA funcione no link externo, você **precisa** configurar a chave no Google Cloud:
 1. No [Google Cloud Console](https://console.cloud.google.com/), vá em **Secret Manager**.
