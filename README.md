@@ -5,6 +5,23 @@ Este é um sistema avançado para análise de viabilidade financeira e técnica 
 ## 🚀 Repositório Oficial
 Acompanhe o desenvolvimento em: [https://github.com/netodesenvolv/ETI_viabilidade](https://github.com/netodesenvolv/ETI_viabilidade)
 
+## ☁️ Deploy Moderno (Firebase App Hosting)
+
+Diferente do Firebase Hosting tradicional, esta aplicação utiliza o **Firebase App Hosting**, que é otimizado para Next.js com Renderização no Servidor (SSR) e IA.
+
+### Como funciona o Deploy:
+1. **Você não precisa rodar** `npm run build` nem `firebase deploy` no seu computador.
+2. **Fluxo de Trabalho:** Basta fazer o `git push` para o seu repositório no GitHub.
+3. **Build na Nuvem:** O Firebase detecta a alteração, cria o ambiente de produção, instala o Node.js, roda o build e faz o deploy de forma 100% automatizada nos servidores do Google.
+
+### Onde encontrar seu link:
+1. Acesse o [Console do Firebase](https://console.firebase.google.com/).
+2. Vá em **Build > App Hosting** no menu lateral.
+3. Clique no seu backend (ex: `eti-viabilidade`).
+4. A **URL de Produção** (terminando em `.web.app`) aparecerá no topo da página assim que o primeiro build terminar.
+
+---
+
 ## Funcionalidades Extraordinárias
 
 ### 🧠 Inteligência Artificial (Genkit + Gemini 2.5 Flash)
@@ -13,36 +30,24 @@ Acompanhe o desenvolvimento em: [https://github.com/netodesenvolv/ETI_viabilidad
 
 ### 🗺️ Gestão Inteligente de Localidades (API IBGE)
 - **Busca Preditiva:** Integração com a API de Localidades do IBGE para preenchimento automático de Código IBGE e UF.
-- **Alternador de Município (Admin):** Administradores podem trocar sua visão de rede instantaneamente no menu lateral para auditoria global.
+- **Alternador de Município (Admin):** Administradores podem trocar sua visão de rede instantaneamente para auditoria global.
 
 ### 📊 Simulador de Expansão de Alta Precisão
 - **Modelagem 1:1 e 1:2:** Projeção de impacto físico e financeiro ao converter turmas parciais em integrais.
-- **Redimensionamento Operacional:** Recálculo automático de custos variáveis baseado na nova ocupação da escola (Headcount).
-- **Auditoria de Viabilidade:** Comparativo detalhado de receitas e despesas no cenário simulado.
+- **Redimensionamento Operacional:** Recálculo automático de custos variáveis baseado na nova ocupação (Headcount) no modelo 1:2.
 
 ### 🏦 Motor de Cálculo FUNDEB 2026
 - **Regra AEE Adicional:** Lógica de dupla matrícula (Fator Etapa + 1,40).
-- **PNAE por CPF Único:** Garantia de que alunos de inclusão não dupliquem o custo da merenda escolar.
-
-## 🌐 Deploy e Link de Acesso (Firebase App Hosting)
-
-Após realizar o `git push`, o Firebase inicia o processo de deploy automaticamente.
-
-### Como obter seu Link de Produção:
-
-1. **Acesse o Console do Firebase:** [https://console.firebase.google.com/](https://console.firebase.google.com/)
-2. **Selecione seu Projeto:** Clique no projeto "EduFin Insights".
-3. **Vá em App Hosting:** No menu lateral esquerdo, procure por "Build" e depois **"App Hosting"**.
-4. **Verifique o Status:** Você verá um card com o nome do seu backend (ex: `eti-viabilidade`). Aguarde o status mudar de "In progress" para "Success".
-5. **Clique na URL:** Abaixo do nome do seu backend, aparecerá um link terminando em `.web.app` ou `.firebaseapp.com`. **Este é o seu link de acesso externo oficial.**
-
-### Checklist de Configuração (Secret Manager):
-
-Antes do link funcionar 100%, você deve garantir que sua chave de IA está configurada no Google Cloud:
-1. Vá no **Secret Manager** do Google Cloud.
-2. Crie um segredo chamado `GEMINI_API_KEY`.
-3. Adicione o valor da sua chave do AI Studio.
-4. Dê permissão de "Secret Manager Secret Accessor" para a conta de serviço que o App Hosting criou.
+- **Sustentabilidade:** Comparativo detalhado de receitas e despesas no cenário simulado.
 
 ---
-Desenvolvido como protótipo de alta fidelidade para gestão estratégica de redes municipais de educação.
+
+## Checklist de Produção (Secret Manager)
+
+Para que a Inteligência Artificial funcione no link externo, você deve configurar a chave no Google Cloud:
+1. No Google Cloud Console, vá em **Secret Manager**.
+2. Crie um segredo chamado `GEMINI_API_KEY`.
+3. Adicione sua chave do Google AI Studio como valor.
+4. Garanta que a conta de serviço do App Hosting tenha a permissão "Secret Manager Secret Accessor".
+
+Desenvolvido para gestão estratégica de redes municipais de educação.
