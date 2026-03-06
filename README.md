@@ -5,51 +5,52 @@ Este é um sistema avançado para análise de viabilidade financeira e técnica 
 ## 🚀 Repositório Oficial
 Acompanhe o desenvolvimento em: [https://github.com/netodesenvolv/ETI_viabilidade](https://github.com/netodesenvolv/ETI_viabilidade)
 
-## ☁️ Deploy Moderno (Firebase App Hosting)
+## ☁️ Deploy Moderno (Firebase App Hosting) - IMPORTANTE
 
-Diferente do Firebase Hosting tradicional, esta aplicação utiliza o **Firebase App Hosting**, que é otimizado para Next.js com Renderização no Servidor (SSR) e IA.
+A imagem que você vê no console (Aguardando sua primeira versão) refere-se ao Hosting tradicional. **Para este projeto, você deve usar o APP HOSTING**.
 
-### Como funciona o Deploy:
-1. **Fluxo de Trabalho:** Basta fazer o `git push` para o seu repositório no GitHub.
-2. **Build na Nuvem:** O Firebase detecta a alteração, cria o ambiente de produção e faz o deploy de forma 100% automatizada.
-3. **URL de Produção:** A URL padrão (terminando em `.web.app`) aparecerá no Console do Firebase em **Build > App Hosting**.
+### Passo a Passo para Ativar o Link Externo:
 
-### 🌐 Configuração de Domínio Customizado (etiviabilidade.com)
-Para utilizar seu próprio domínio, siga estes passos no Console do Firebase:
-1. Vá em **Build > Hosting** (ou dentro das configurações do App Hosting).
-2. Clique em **Adicionar Domínio Personalizado**.
-3. Insira `etiviabilidade.com`.
-4. **Verificação de Propriedade:** Copie os registros **A** e **TXT** fornecidos pelo Firebase e insira-os no seu provedor de DNS (onde o domínio foi comprado).
-5. **Certificado SSL:** Após a verificação, o Firebase gerará o certificado de segurança automaticamente. Pode levar algumas horas para o site ficar acessível via HTTPS.
+1. **Vá para o Menu Correto:** No Console do Firebase, no menu lateral esquerdo, clique em **Build (Criação)** e depois em **App Hosting** (fica logo abaixo do Hosting tradicional).
+2. **Criar um Backend:** Clique em "Começar" ou "Adicionar Backend".
+3. **Conectar ao GitHub:**
+   - Selecione sua conta do GitHub.
+   - Escolha o repositório `ETI_viabilidade`.
+4. **Configurações de Build:**
+   - Nome do Backend: `edufin-insights`
+   - Região: `us-central1` (ou a de sua preferência).
+   - Branch: `main` (ou a que você está usando).
+5. **Finalizar:** Clique em "Concluir".
+
+**O que acontece agora?**
+O Firebase vai detectar seu arquivo `apphosting.yaml` e `package.json`, rodar o build nos servidores do Google e gerar um **novo link** automático. É neste novo link (dentro da aba App Hosting) que a Inteligência Artificial e o Banco de Dados funcionarão corretamente.
+
+### 🌐 Configuração de Domínio (etiviabilidade.com)
+Após criar o backend no **App Hosting**:
+1. Dentro da aba **App Hosting**, vá em **Configurações**.
+2. Clique em **Domínios** e adicione `etiviabilidade.com`.
+3. Siga as instruções de DNS (Registros A e TXT) que aparecerão lá.
 
 ---
 
 ## Funcionalidades Extraordinárias
 
 ### 🧠 Inteligência Artificial (Genkit + Gemini 2.5 Flash)
-- **Estrategista ETI:** Geração de roteiros estratégicos personalizados com cronogramas plurianuais, análise de impacto fiscal e sugestões de captação (VAAR/PDDE).
-- **Diagnóstico Executivo:** Narrativas técnicas automatizadas no Painel Executivo e Análise Custo-Aluno.
-
-### 🗺️ Gestão Inteligente de Localidades (API IBGE)
-- **Busca Preditiva:** Integração com a API de Localidades do IBGE para preenchimento automático de Código IBGE e UF no cadastro de usuários e perfil.
-- **Alternador de Município (Admin):** Administradores podem trocar sua visão de rede instantaneamente para auditoria global.
+- **Estrategista ETI:** Geração de roteiros estratégicos personalizados com cronogramas plurianuais.
+- **Diagnóstico Executivo:** Narrativas técnicas automatizadas baseadas em dados fiscais reais.
 
 ### 📊 Simulador de Expansão de Alta Precisão
-- **Modelagem 1:1 e 1:2:** Projeção de impacto físico e financeiro ao converter turmas parciais em integrais.
-- **Redimensionamento Operacional:** Recálculo automático de custos variáveis baseado na nova ocupação (Headcount) no modelo 1:2.
-
-### 🏦 Motor de Cálculo FUNDEB 2026
-- **Regra AEE Adicional:** Lógica de dupla matrícula (Fator Etapa + 1,40).
-- **Sustentabilidade:** Comparativo detalhado de receitas e despesas no cenário simulado.
+- **Modelagem 1:1 e 1:2:** Projeção de impacto físico e financeiro ao converter turmas.
+- **Redimensionamento Operacional:** Recálculo automático de custos baseado na ocupação.
 
 ---
 
 ## Checklist de Produção (Secret Manager)
 
-Para que a Inteligência Artificial funcione no link externo, você deve configurar a chave no Google Cloud:
-1. No Google Cloud Console, vá em **Secret Manager**.
-2. Crie um segredo chamado `GEMINI_API_KEY`.
-3. Adicione sua chave do Google AI Studio como valor.
-4. Garanta que a conta de serviço do App Hosting tenha a permissão "Secret Manager Secret Accessor".
+Para que a IA funcione no link externo, você **precisa** configurar a chave no Google Cloud:
+1. No [Google Cloud Console](https://console.cloud.google.com/), vá em **Secret Manager**.
+2. Crie um segredo exatamente com o nome: `GEMINI_API_KEY`.
+3. Adicione sua chave do Google AI Studio como o valor do segredo.
+4. No Firebase App Hosting, conceda permissão para que o serviço acesse este segredo.
 
 Desenvolvido para gestão estratégica de redes municipais de educação.
