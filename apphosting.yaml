@@ -15,8 +15,9 @@ runConfig:
 
 env:
   # Variáveis NEXT_PUBLIC precisam estar disponíveis no BUILD
+  # O Firebase exige o campo 'value' (mesmo que vazio) ou 'secret'
   - variable: NEXT_PUBLIC_FIREBASE_API_KEY
-    value: "" # Adicione o valor aqui ou no Console do Firebase
+    value: "" 
     availability: [BUILD, RUNTIME]
   - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
     value: ""
