@@ -8,12 +8,9 @@ Acompanhe o desenvolvimento em: [https://github.com/netodesenvolv/ETI_viabilidad
 ## ☁️ Guia de Implantação (Firebase App Hosting)
 
 ### 1. Corrigir o erro de Build:
-O arquivo `apphosting.yaml` foi ajustado para incluir o campo `value` obrigatório. Para que o build funcione:
-1. Certifique-se de preencher as chaves do Firebase no arquivo `apphosting.yaml` ou configure-as como **Segredos** no Console do Firebase.
-2. Faça o push das alterações:
-   - `git add .`
-   - `git commit -m "fix: adiciona campos obrigatórios ao apphosting.yaml"`
-   - `git push`
+Seu terminal diz "Your branch is ahead of origin/main by 2 commits". Isso significa que as correções já estão prontas no seu computador, mas o Firebase (GitHub) ainda não as recebeu.
+**Execute o comando abaixo agora:**
+- `git push`
 
 ### 2. Configurar o Secret Manager (OBRIGATÓRIO para a IA):
 1. Vá ao [Google Cloud Console](https://console.cloud.google.com/).
