@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth, useFirestore, useUser, useDoc } from "@/firebase";
 import { doc, setDoc, writeBatch } from "firebase/firestore";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 
 interface IBGECity {
   id: number;
