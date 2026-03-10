@@ -65,7 +65,7 @@ export default function CensoAdminPage() {
   const db = useFirestore();
   const { user } = useUser(auth);
   const userProfileRef = useMemo(() => (db && user ? doc(db, 'users', user.uid) : null), [db, user]);
-  const { data: profile } = useDoc(userProfileRef);
+  const { data: profile, loading: profileLoading } = useDoc(userProfileRef);
   const municipioId = profile?.municipioId;
 
   // Estados para busca de cidades via API IBGE
@@ -133,7 +133,7 @@ export default function CensoAdminPage() {
     if (lines.length < 2) return [];
     
     const firstLine = lines[0];
-    const separator = firstLine.includes('\t') ? '\t' : (firstLine.includes(';') ? ';' : ',');
+    const separator = firstLine.includes(';') ? ';' : (firstLine.includes('\t') ? '\t' : ',');
     const headers = firstLine.split(separator).map(h => h.trim().replace(/"/g, ''));
     const schools: ParsedSchool[] = [];
 
@@ -147,17 +147,9 @@ export default function CensoAdminPage() {
       
       const qInt = (k: string) => parseInt(row[k] || "0", 10);
       
+      // Modelo de cálculo unificado com o Pipeline Nacional
       const total_bas = qInt('QT_MAT_BAS');
-      const creche_int = qInt('QT_MAT_INF_CRE_INT');
-      const creche_tot = qInt('QT_MAT_INF_CRE');
-      const pre_int = qInt('QT_MAT_INF_PRE_INT');
-      const pre_tot = qInt('QT_MAT_INF_PRE');
-      const ef_ai_int = qInt('QT_MAT_FUND_AI_INT');
-      const ef_ai_tot = qInt('QT_MAT_FUND_AI');
-      const ef_af_int = qInt('QT_MAT_FUND_AF_INT');
-      const ef_af_tot = qInt('QT_MAT_FUND_AF');
-
-      const total_eti = creche_int + pre_int + ef_ai_int + ef_af_int;
+      const total_eti = qInt('QT_MAT_INF_CRE_INT') + qInt('QT_MAT_INF_PRE_INT') + qInt('QT_MAT_FUND_AI_INT') + qInt('QT_MAT_FUND_AF_INT');
       
       schools.push({
         id: row.CO_ENTIDADE,
@@ -165,20 +157,20 @@ export default function CensoAdminPage() {
         nome: row.NO_ENTIDADE || row.nome || "Escola sem nome",
         municipio: row.NO_MUNICIPIO || "N/A",
         uf: row.SG_UF || "N/A",
-        localizacao: row.TP_LOCALIZACAO === "2" ? "Rural" : "Urbana",
+        localizacao: row.TP_LOCALIZACAO === "2" ? "rural" : "urbana",
         tp_dependencia: row.TP_DEPENDENCIA || "3",
         total_matriculas: total_bas,
         total_eti,
         percentual_eti: total_bas > 0 ? Number(((total_eti / total_bas) * 100).toFixed(1)) : 0,
         matriculas: {
-          creche_integral: creche_int,
-          creche_parcial: Math.max(0, creche_tot - creche_int),
-          pre_integral: pre_int,
-          pre_parcial: Math.max(0, pre_tot - pre_int),
-          ef_ai_integral: ef_ai_int,
-          ef_ai_parcial: Math.max(0, ef_ai_tot - ef_ai_int),
-          ef_af_integral: ef_af_int,
-          ef_af_parcial: Math.max(0, ef_af_tot - ef_af_int),
+          creche_integral: qInt('QT_MAT_INF_CRE_INT'),
+          creche_parcial: Math.max(0, qInt('QT_MAT_INF_CRE') - qInt('QT_MAT_INF_CRE_INT')),
+          pre_integral: qInt('QT_MAT_INF_PRE_INT'),
+          pre_parcial: Math.max(0, qInt('QT_MAT_INF_PRE') - qInt('QT_MAT_INF_PRE_INT')),
+          ef_ai_integral: qInt('QT_MAT_FUND_AI_INT'),
+          ef_ai_parcial: Math.max(0, qInt('QT_MAT_FUND_AI') - qInt('QT_MAT_FUND_AI_INT')),
+          ef_af_integral: qInt('QT_MAT_FUND_AF_INT'),
+          ef_af_parcial: Math.max(0, qInt('QT_MAT_FUND_AF') - qInt('QT_MAT_FUND_AF_INT')),
           eja_fundamental: qInt('QT_MAT_EJA_FUND'),
           especial_aee: qInt('QT_MAT_ESP')
         }
