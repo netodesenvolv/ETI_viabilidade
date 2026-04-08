@@ -10,19 +10,25 @@ export function FirebaseErrorListener() {
 
   useEffect(() => {
     const handlePermissionError = (error: FirestorePermissionError) => {
-      // Surfacing a rich error for development overlays
-      console.error('Firebase Permission Error:', error.context);
-      
-      toast({
-        variant: "destructive",
-        title: "Erro de Permissão",
-        description: `Você não tem autorização para ${error.context.operation} em ${error.context.path}.`,
+      // Log detalhado para depuração técnica
+      console.error('🔥 [Firebase Permission Denied]', {
+        operation: error.operation,
+        path: error.path,
+        timestamp: new Date().toISOString()
       });
-      
-      // In development, this will trigger the Next.js error overlay
-      if (process.env.NODE_ENV === 'development') {
-        throw error;
-      }
+
+      toast({
+        title: "Restrição de Acesso",
+        description: `Seu perfil atual não permite ${error.operation} em ${error.path}.`,
+        variant: "destructive",
+      });
+
+      // Removido o throw para evitar travar a interface em desenvolvimento
+      // if (process.env.NODE_ENV === 'development') {
+      //   const technicalError = new Error(`Permissão Negada: ${error.operation} em ${error.path}. Verifique as Firestore Rules.`);
+      //   (technicalError as any).digest = 'FIREBASE_PERMISSION_DENIED';
+      //   throw technicalError;
+      // }
     };
 
     errorEmitter.on('permission-error', handlePermissionError);

@@ -26,7 +26,7 @@ import {
   PieChart
 } from "lucide-react";
 import { DEFAULT_PARAMETERS } from "@/lib/constants";
-import { calcularVAAF, calcularVAAT, calcularPNAE, calcularMDE, calcularOutros } from "@/lib/calculations";
+import { calcularVAAF, calcularVAAT, calcularVAAR, calcularPNAE, calcularMDE, calcularOutros } from "@/lib/calculations";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -71,10 +71,11 @@ export default function DashboardPage() {
   const auth = useAuth();
   const db = useFirestore();
   const { user } = useUser(auth);
+  const { activeMunicipioId, activeMunicipioName, activeUF } = require('@/providers/municipality-provider').useMunicipality();
 
   const userProfileRef = useMemo(() => (db && user ? doc(db, 'users', user.uid) : null), [db, user]);
   const { data: profile, loading: profileLoading } = useDoc(userProfileRef);
-  const municipioId = profile?.municipioId;
+  const municipioId = activeMunicipioId;
 
   const schoolsRef = useMemo(() => (db && municipioId ? collection(db, 'municipios', municipioId, 'schools') : null), [db, municipioId]);
   const { data: schools, loading: schoolsLoading } = useCollection(schoolsRef);
@@ -103,11 +104,12 @@ export default function DashboardPage() {
       const m = school.matriculas || {};
       const vaaf = calcularVAAF(m, parametros);
       const vaat = calcularVAAT(school, parametros, totalMatriculasMunicipal);
+      const vaar = calcularVAAR(school, parametros, totalMatriculasMunicipal);
       const pnae = calcularPNAE(m, parametros);
       const mde = calcularMDE(school, parametros, totalMatriculasMunicipal);
       const outros = calcularOutros(school, parametros, totalMatriculasMunicipal);
       
-      const receitaTotal = vaaf + vaat + pnae + mde + outros;
+      const receitaTotal = vaaf + vaat + vaar + pnae + mde + outros;
       const schoolExpensesList = (allExpenses || []).filter((e: any) => e.schoolId === school.id);
       const despesaReal = schoolExpensesList.reduce((acc, e: any) => acc + (e.value || 0), 0);
       
@@ -124,7 +126,7 @@ export default function DashboardPage() {
 
       return {
         ...school,
-        vaaf, vaat, pnae, mde, outros,
+        vaaf, vaat, vaar, pnae, mde, outros,
         receitaTotal, despesaTotal, saldo, cobertura,
         custoAluno, receitaAluno, status,
         expensesDetail: schoolExpensesList
@@ -138,18 +140,20 @@ export default function DashboardPage() {
       const m = s.matriculas || {};
       const vaaf = calcularVAAF(m, parametros);
       const vaat = calcularVAAT(s, parametros, totalMatriculasRede);
+      const vaar = calcularVAAR(s, parametros, totalMatriculasRede);
       const pnae = calcularPNAE(m, parametros);
       const mde = calcularMDE(s, parametros, totalMatriculasRede);
       const outros = calcularOutros(s, parametros, totalMatriculasRede);
       return {
         vaaf: acc.vaaf + vaaf,
         vaat: acc.vaat + vaat,
+        vaar: acc.vaar + vaar,
         pnae: acc.pnae + pnae,
         mde: acc.mde + mde,
         outros: acc.outros + outros,
-        total: acc.total + (vaaf + vaat + pnae + mde + outros)
+        total: acc.total + (vaaf + vaat + vaar + pnae + mde + outros)
       };
-    }, { vaaf: 0, vaat: 0, pnae: 0, mde: 0, outros: 0, total: 0 });
+    }, { vaaf: 0, vaat: 0, vaar: 0, pnae: 0, mde: 0, outros: 0, total: 0 });
 
     const currentTotalSaldo = schoolAnalyses.reduce((acc, s) => acc + s.saldo, 0);
     const currentDeficitCount = schoolAnalyses.filter(s => s.status === 'deficit').length;
@@ -221,8 +225,8 @@ export default function DashboardPage() {
       const totalRevenue = networkTotals.total || 1;
 
       const input = {
-        municipio: profile?.municipio || "Município",
-        uf: profile?.uf || "BA",
+        municipio: activeMunicipioName || "Município",
+        uf: activeUF || "BA",
         exercicio: 2026,
         totalMatriculas: stats.totalMatriculasRede,
         totalETI: stats.totalETIRede,
@@ -275,7 +279,7 @@ export default function DashboardPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `parecer_eti_${profile?.municipio || 'municipio'}_2026.txt`);
+    link.setAttribute("download", `parecer_eti_${activeMunicipioName || 'municipio'}_2026.txt`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -296,7 +300,7 @@ export default function DashboardPage() {
     <div className="space-y-8 animate-in fade-in duration-500">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-headline font-bold text-primary">Diagnóstico: {profile?.municipio}</h2>
+          <h2 className="text-3xl font-headline font-bold text-primary">Diagnóstico: {activeMunicipioName}</h2>
           <p className="text-muted-foreground">Visão geral do exercício fiscal 2026 (Rede Municipal)</p>
         </div>
         
@@ -499,6 +503,7 @@ export default function DashboardPage() {
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                       <RevenueDetailItem label="FUNDEB VAAf" value={school.vaaf} />
                                       <RevenueDetailItem label="Complementação VAAT" value={school.vaat} />
+                                      <RevenueDetailItem label="Complementação VAAR" value={school.vaar} />
                                       <RevenueDetailItem label="PNAE Alimentação" value={school.pnae} />
                                       <RevenueDetailItem label="MDE / Recursos Próprios" value={school.mde} />
                                       <RevenueDetailItem label="Outros Repasses (QSE/PDDE)" value={school.outros} />

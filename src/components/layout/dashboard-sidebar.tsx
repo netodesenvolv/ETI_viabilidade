@@ -79,6 +79,8 @@ interface IBGECity {
   }
 }
 
+import { useMunicipality } from "@/providers/municipality-provider"
+
 export function DashboardSidebar() {
   const pathname = usePathname()
   const router = useRouter()
@@ -87,6 +89,7 @@ export function DashboardSidebar() {
   const db = useFirestore()
   const { user } = useUser(auth)
   const [mounted, setMounted] = React.useState(false)
+  const { activeMunicipioName, setMunicipio, isViewOnly } = useMunicipality()
 
   // Estados para troca de município (Admin)
   const [isSwitching, setIsSwitching] = React.useState(false)
@@ -140,23 +143,16 @@ export function DashboardSidebar() {
   }, [cityQuery]);
 
   const handleSwitchCity = async (city: IBGECity) => {
-    if (!db || !user) return;
+    if (!user) return;
     setIsSwitching(true);
     try {
-      await setDoc(doc(db, 'users', user.uid), {
-        municipio: city.nome,
-        municipioId: city.id.toString(),
-        uf: city.microrregiao.mesorregiao.UF.sigla
-      }, { merge: true });
-      
-      toast({ title: "Município Alterado", description: `Migrando visão para ${city.nome}.` });
+      setMunicipio(city.id.toString(), city.nome, city.microrregiao.mesorregiao.UF.sigla);
+      toast({ title: "Visão Alterada", description: `Modo de supervisão ativo para ${city.nome}.` });
       setIsOpen(false);
       setCityQuery("");
       setCityResults([]);
-      // Reload para garantir que todos os hooks de dados peguem o novo ID
-      window.location.reload();
     } catch (e) {
-      toast({ title: "Erro na Migração", description: "Não foi possível trocar de município.", variant: "destructive" });
+      toast({ title: "Erro na Troca", description: "Não foi possível alterar a visão.", variant: "destructive" });
     } finally {
       setIsSwitching(false);
     }
@@ -198,23 +194,25 @@ export function DashboardSidebar() {
         </SidebarMenu>
       </SidebarContent>
       <SidebarFooter className="p-4 space-y-2">
-        <div className="bg-white/10 rounded-lg p-3 group-data-[collapsible=icon]:hidden border border-white/5 relative">
-          <p className="text-[10px] uppercase font-bold text-white/40 tracking-wider mb-1">Exercício 2026</p>
+        <div className={`rounded-lg p-3 group-data-[collapsible=icon]:hidden border relative transition-colors ${isViewOnly ? 'bg-orange-500/10 border-orange-500/30' : 'bg-white/10 border-white/5'}`}>
+          <p className="text-[10px] uppercase font-bold text-white/40 tracking-wider mb-1">
+            {isViewOnly ? "Modo de Supervisão" : "Exercício 2026"}
+          </p>
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 flex-1 overflow-hidden">
-              <Building2 className="h-3 w-3 text-white/60" />
+              <Building2 className={`h-3 w-3 ${isViewOnly ? 'text-orange-400' : 'text-white/60'}`} />
               <div className="flex-1 overflow-hidden">
                 {!mounted || loading ? (
                   <Skeleton className="h-3 w-full bg-white/10" />
                 ) : (
-                  <p className="text-xs font-medium text-white truncate">
-                    {profile?.municipio || "Não definido"}
+                  <p className={`text-xs font-medium truncate ${isViewOnly ? 'text-orange-100' : 'text-white'}`}>
+                    {activeMunicipioName || "Não definido"}
                   </p>
                 )}
               </div>
             </div>
             
-            {profile?.role === 'Admin' && (
+            {(profile?.role === 'Admin') && (
               <Dialog open={isDialogOpen} onOpenChange={setIsOpen}>
                 <DialogTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-6 w-6 text-white/40 hover:text-white hover:bg-white/10">
@@ -223,9 +221,9 @@ export function DashboardSidebar() {
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Migrar de Município</DialogTitle>
+                    <DialogTitle>Alterar Visão do Sistema</DialogTitle>
                     <DialogDescription>
-                      Como Administrador, você pode alterar sua visão para qualquer município da base nacional.
+                      Como Administrador Total, você pode filtrar os dados de qualquer cidade sem alterar seu perfil.
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4 py-4">

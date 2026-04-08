@@ -48,6 +48,7 @@ export interface FundingParameters {
     F1: number; G1: number; G2: number;
   };
   vaat_total_rede: number;
+  vaar_total_rede: number;
   pnae: {
     integral_dia: number;
     pre_parcial_dia: number;

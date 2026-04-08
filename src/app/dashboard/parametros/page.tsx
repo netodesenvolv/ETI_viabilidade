@@ -18,6 +18,44 @@ import { FirestorePermissionError } from '@/firebase/errors';
 import { FundingParameters } from "@/types";
 import { Badge } from "@/components/ui/badge";
 
+// Componente auxiliar para evitar o bug do cursor pulando ao formatar moeda
+function MoneyInput({ value, onChange, id, className, placeholder, decimals = 2 }: any) {
+  const [editingValue, setEditingValue] = useState<string | null>(null);
+
+  const formatOptions = { 
+    minimumFractionDigits: decimals, 
+    maximumFractionDigits: decimals 
+  };
+
+  const displayValue = editingValue !== null 
+    ? editingValue 
+    : (value ?? 0).toLocaleString('pt-BR', formatOptions);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let raw = e.target.value.replace(/[^\d,.-]/g, '');
+    setEditingValue(raw);
+    
+    // Converte para número para o pai
+    const num = parseFloat(raw.replace(/\./g, '').replace(',', '.')) || 0;
+    onChange(num);
+  };
+
+  return (
+    <Input
+      id={id}
+      className={className}
+      value={displayValue}
+      onChange={handleChange}
+      onFocus={() => {
+        const val = (value ?? 0).toString().replace('.', ',');
+        setEditingValue(val);
+      }}
+      onBlur={() => setEditingValue(null)}
+      placeholder={placeholder}
+    />
+  );
+}
+
 const VAAF_LABELS: Record<string, string> = {
   A1: "Creche pública — Integral (7h+)",
   A2: "Creche pública — Parcial (até 4h)",
@@ -44,11 +82,12 @@ export default function ParametrosPage() {
   const auth = useAuth();
   const db = useFirestore();
   const { user } = useUser(auth);
+  const { activeMunicipioId, activeMunicipioName } = require('@/providers/municipality-provider').useMunicipality();
 
   // Perfil e Município
   const userProfileRef = useMemo(() => (db && user ? doc(db, 'users', user.uid) : null), [db, user]);
   const { data: profile, loading: profileLoading } = useDoc(userProfileRef);
-  const municipioId = profile?.municipioId;
+  const municipioId = activeMunicipioId;
 
   // Carregar Parâmetros do Firestore
   const paramsRef = useMemo(() => (db && municipioId ? doc(db, 'municipios', municipioId, 'config', 'parameters') : null), [db, municipioId]);
@@ -60,7 +99,10 @@ export default function ParametrosPage() {
   // Sincronizar estado local com o banco de dados quando carregar
   useEffect(() => {
     if (dbParams) {
-      setLocalParams(dbParams as FundingParameters);
+      setLocalParams({
+        ...DEFAULT_PARAMETERS,
+        ...dbParams as FundingParameters
+      });
     }
   }, [dbParams]);
 
@@ -147,7 +189,7 @@ export default function ParametrosPage() {
           <div className="flex items-center gap-2 mb-1">
             <h2 className="text-3xl font-headline font-bold text-primary">Parâmetros de Financiamento</h2>
             <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 gap-1.5 py-1">
-              <MapPin className="h-3 w-3" /> {profile?.municipio}
+              <MapPin className="h-3 w-3" /> {activeMunicipioName}
             </Badge>
           </div>
           <p className="text-muted-foreground">Configuração dos valores de repasse para o exercício 2026</p>
@@ -173,32 +215,35 @@ export default function ParametrosPage() {
                   <ScrollText className="h-5 w-5 text-primary" />
                   <CardTitle className="text-lg">Tabela VAAF e VAAT 2026</CardTitle>
                 </div>
-                <CardDescription>Valores base e fatores de ponderação aplicados em {profile?.municipio}</CardDescription>
+                <CardDescription>Valores base e fatores de ponderação aplicados em {activeMunicipioName}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2 p-4 bg-muted/30 rounded-lg border">
                     <Label htmlFor="vaaf" className="text-xs uppercase tracking-wider text-muted-foreground">VAAf Base 2026 (R$)</Label>
-                    <Input 
+                    <MoneyInput 
                       id="vaaf" 
                       className="text-lg font-bold font-mono" 
-                      value={localParams.vaaf_base.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} 
-                      onChange={(e) => {
-                        const val = parseFloat(e.target.value.replace(/\./g, '').replace(',', '.')) || 0;
-                        setLocalParams(prev => ({ ...prev, vaaf_base: val }));
-                      }} 
+                      value={localParams.vaaf_base} 
+                      onChange={(val: number) => setLocalParams(prev => ({ ...prev, vaaf_base: val }))} 
+                    />
+                  </div>
+                   <div className="space-y-2 p-4 bg-muted/30 rounded-lg border">
+                    <Label htmlFor="vaat" className="text-xs uppercase tracking-wider text-muted-foreground">Complementação VAAT Estimada (R$)</Label>
+                    <MoneyInput 
+                      id="vaat" 
+                      className="text-lg font-bold font-mono" 
+                      value={localParams.vaat_total_rede}
+                      onChange={(val: number) => setLocalParams(prev => ({ ...prev, vaat_total_rede: val }))}
                     />
                   </div>
                   <div className="space-y-2 p-4 bg-muted/30 rounded-lg border">
-                    <Label htmlFor="vaat" className="text-xs uppercase tracking-wider text-muted-foreground">Complementação VAAT Estimada (R$)</Label>
-                    <Input 
-                      id="vaat" 
-                      className="text-lg font-bold font-mono" 
-                      value={localParams.vaat_total_rede.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                      onChange={(e) => {
-                        const val = parseFloat(e.target.value.replace(/\./g, '').replace(',', '.')) || 0;
-                        setLocalParams(prev => ({ ...prev, vaat_total_rede: val }));
-                      }}
+                    <Label htmlFor="vaar" className="text-xs uppercase tracking-wider text-muted-foreground">Complementação VAAR Estimada (R$)</Label>
+                    <MoneyInput 
+                      id="vaar" 
+                      className="text-lg font-bold font-mono text-accent" 
+                      value={localParams.vaar_total_rede}
+                      onChange={(val: number) => setLocalParams(prev => ({ ...prev, vaar_total_rede: val }))}
                     />
                   </div>
                 </div>
@@ -219,10 +264,11 @@ export default function ParametrosPage() {
                             <TableCell className="font-mono text-xs font-bold text-primary">{key}</TableCell>
                             <TableCell className="text-sm">{VAAF_LABELS[key] || key}</TableCell>
                             <TableCell className="text-right">
-                              <Input 
+                              <MoneyInput 
                                 className="w-24 ml-auto h-8 text-right font-mono" 
-                                value={value.toString().replace('.', ',')} 
-                                onChange={(e) => updateFator(key as any, e.target.value)}
+                                value={value} 
+                                decimals={3}
+                                onChange={(val: number) => updateFator(key as any, val.toString().replace('.', ','))}
                               />
                             </TableCell>
                           </TableRow>
@@ -252,26 +298,26 @@ export default function ParametrosPage() {
                     <div className="space-y-3">
                       <div className="flex justify-between items-center text-sm">
                         <Label>Creche e Ensino Integral (7h+)</Label>
-                        <Input 
+                        <MoneyInput 
                           className="w-24 h-8 text-right" 
-                          value={localParams.pnae.integral_dia.toString().replace('.', ',')} 
-                          onChange={(e) => updatePnae('integral_dia', e.target.value)}
+                          value={localParams.pnae.integral_dia} 
+                          onChange={(val: number) => updatePnae('integral_dia', val.toString().replace('.', ','))}
                         />
                       </div>
                       <div className="flex justify-between items-center text-sm">
                         <Label>Pré-escola Parcial</Label>
-                        <Input 
+                        <MoneyInput 
                           className="w-24 h-8 text-right" 
-                          value={localParams.pnae.pre_parcial_dia.toString().replace('.', ',')}
-                          onChange={(e) => updatePnae('pre_parcial_dia', e.target.value)}
+                          value={localParams.pnae.pre_parcial_dia}
+                          onChange={(val: number) => updatePnae('pre_parcial_dia', val.toString().replace('.', ','))}
                         />
                       </div>
                       <div className="flex justify-between items-center text-sm">
                         <Label>EF/EM Parcial</Label>
-                        <Input 
+                        <MoneyInput 
                           className="w-24 h-8 text-right" 
-                          value={localParams.pnae.ef_parcial_dia.toString().replace('.', ',')}
-                          onChange={(e) => updatePnae('ef_parcial_dia', e.target.value)}
+                          value={localParams.pnae.ef_parcial_dia}
+                          onChange={(val: number) => updatePnae('ef_parcial_dia', val.toString().replace('.', ','))}
                         />
                       </div>
                     </div>
@@ -304,24 +350,16 @@ export default function ParametrosPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label>MDE Líquido para ETI (Anual R$)</Label>
-                  <Input 
-                    placeholder="1.200.000,00" 
-                    value={localParams.mde_liquido_eti.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value.replace(/\./g, '').replace(',', '.')) || 0;
-                      setLocalParams(prev => ({ ...prev, mde_liquido_eti: val }));
-                    }}
+                  <MoneyInput 
+                    value={localParams.mde_liquido_eti}
+                    onChange={(val: number) => setLocalParams(prev => ({ ...prev, mde_liquido_eti: val }))}
                   />
                 </div>
                 <div className="space-y-2">
                   <Label>Quota Salário Educação (QSE R$)</Label>
-                  <Input 
-                    placeholder="180.000,00" 
-                    value={localParams.qse.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value.replace(/\./g, '').replace(',', '.')) || 0;
-                      setLocalParams(prev => ({ ...prev, qse: val }));
-                    }}
+                  <MoneyInput 
+                    value={localParams.qse}
+                    onChange={(val: number) => setLocalParams(prev => ({ ...prev, qse: val }))}
                   />
                 </div>
               </div>

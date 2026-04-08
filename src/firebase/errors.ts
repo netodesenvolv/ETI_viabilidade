@@ -7,11 +7,21 @@ export type SecurityRuleContext = {
 };
 
 export class FirestorePermissionError extends Error {
-  context: SecurityRuleContext;
+  path: string;
+  operation: string;
 
   constructor(context: SecurityRuleContext) {
     super(`Missing or insufficient permissions: ${context.operation} at ${context.path}`);
     this.name = 'FirestorePermissionError';
-    this.context = context;
+    this.path = context.path;
+    this.operation = context.operation;
+  }
+
+  // Helper para obter o contexto original se necessário
+  get context(): SecurityRuleContext {
+    return {
+      path: this.path,
+      operation: this.operation as any,
+    };
   }
 }

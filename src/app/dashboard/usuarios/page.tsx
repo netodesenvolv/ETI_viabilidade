@@ -130,13 +130,26 @@ export default function UsuariosPage() {
         secondaryApp = existingApp;
       } else {
         secondaryApp = initializeApp(firebaseConfig, 'SecondaryCreator');
+        
+        // Sincroniza emuladores na app secundária se estiverem ativos na principal
+        if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATOR === 'true') {
+          const { connectAuthEmulator } = await import('firebase/auth');
+          const secondaryAuth = getAuth(secondaryApp);
+          connectAuthEmulator(secondaryAuth, 'http://localhost:9099');
+          console.log("Secondary App: Conectada ao Emulador de Auth.");
+        }
       }
       
       const secondaryAuth = getAuth(secondaryApp);
+      
+      console.log("Tentando criar credenciais no Auth para:", newUser.email);
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, newUser.email, newUser.password);
       const uid = userCredential.user.uid;
+      
+      console.log("Credenciais criadas com UID:", uid);
       await signOut(secondaryAuth);
 
+      console.log("Tentando gravar perfil no Firestore para UID:", uid);
       const userRef = doc(db, "users", uid);
       const userData = {
         name: newUser.name,
@@ -159,13 +172,17 @@ export default function UsuariosPage() {
         description: `O acesso para ${userData.name} foi criado com sucesso no município de ${userData.municipio}.`,
       })
     } catch (error: any) {
+      console.error("🔥 Erro completo no cadastro:", error);
+      console.error("Código do erro:", error.code);
+      console.error("Mensagem do erro:", error.message);
+
       let message = "Erro ao criar usuário."
       if (error.code === 'auth/email-already-in-use') message = "Este e-mail já está sendo usado por outro usuário."
       if (error.code === 'auth/weak-password') message = "A senha deve ter pelo menos 6 caracteres."
       
       toast({
         title: "Falha no Cadastro",
-        description: message,
+        description: `${message} (Detalhe: ${error.code || 'Erro de Rede'})`,
         variant: "destructive"
       })
     } finally {
@@ -208,15 +225,16 @@ export default function UsuariosPage() {
   const filteredUsers = (users || []).filter(user => 
     user.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
     user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.municipio?.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+    user.municipio?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.role?.toLowerCase().includes(searchTerm.toLowerCase())
+  ).sort((a, b) => (a.municipio || "").localeCompare(b.municipio || ""))
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-headline font-bold text-primary">Gerenciamento de Usuários</h2>
-          <p className="text-muted-foreground">Controle quem tem acesso e quais as permissões na plataforma por município</p>
+          <p className="text-muted-foreground">Controle total de acessos e permissões em todos os municípios da plataforma</p>
         </div>
         
         <Dialog open={isOpen} onOpenChange={setIsOpen}>

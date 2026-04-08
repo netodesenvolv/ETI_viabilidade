@@ -54,6 +54,15 @@ export function calcularVAAT(escola: School, parametros: FundingParameters, tota
 }
 
 /**
+ * 2.5. VAAR — Complementação baseada em resultados, distribuída proporcionalmente.
+ */
+export function calcularVAAR(escola: School, parametros: FundingParameters, totalMatriculasRede: number) {
+  if (!escola || totalMatriculasRede <= 0 || !escola.total_matriculas) return 0;
+  const { vaar_total_rede } = parametros;
+  return ((vaar_total_rede || 0) * escola.total_matriculas) / totalMatriculasRede;
+}
+
+/**
  * 3. PNAE 2026 — Por tipo de matrícula × valor anual (Regra: Valor Dia * 200 dias).
  * CRÍTICO: Não somar especial_aee separadamente para não duplicar CPFs.
  */

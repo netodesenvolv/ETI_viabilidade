@@ -12,6 +12,7 @@ export const DEFAULT_PARAMETERS: FundingParameters = {
     G1: 1.400, G2: 1.150,
   },
   vaat_total_rede: 850000,
+  vaar_total_rede: 0,
   pnae: {
     integral_dia: 1.57,
     pre_parcial_dia: 0.82,
