@@ -90,6 +90,9 @@ export default function DespesasPage() {
   const [globalMaterial, setGlobalMaterial] = useState("");
   const [globalServicos, setGlobalServicos] = useState("");
   const [globalOutros, setGlobalOutros] = useState("");
+  const [globalDocentes, setGlobalDocentes] = useState("");
+  const [globalMonitores, setGlobalMonitores] = useState("");
+  const [globalGestao, setGlobalGestao] = useState("");
 
   // Firebase
   const auth = useAuth();
@@ -545,6 +548,51 @@ export default function DespesasPage() {
                     <CardDescription>Distribuir custos centralizados proporcionalmente.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-6">
+                    <div className="space-y-2">
+                      <Label className="text-xs uppercase font-bold text-muted-foreground">Pessoal — Docentes (Total)</Label>
+                      <div className="flex gap-2">
+                        <Input 
+                          placeholder="R$ 0,00" 
+                          value={globalDocentes} 
+                          onChange={e => setGlobalDocentes(e.target.value)}
+                          className="font-mono"
+                        />
+                        <Button size="icon" variant="outline" onClick={() => handleApplyRateio("Pessoal — Docentes", globalDocentes)}>
+                          <Calculator className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs uppercase font-bold text-muted-foreground">Pessoal — Monitores (Total)</Label>
+                      <div className="flex gap-2">
+                        <Input 
+                          placeholder="R$ 0,00" 
+                          value={globalMonitores} 
+                          onChange={e => setGlobalMonitores(e.target.value)}
+                          className="font-mono"
+                        />
+                        <Button size="icon" variant="outline" onClick={() => handleApplyRateio("Pessoal — Monitores", globalMonitores)}>
+                          <Calculator className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs uppercase font-bold text-muted-foreground">Pessoal — Gestão (Total)</Label>
+                      <div className="flex gap-2">
+                        <Input 
+                          placeholder="R$ 0,00" 
+                          value={globalGestao} 
+                          onChange={e => setGlobalGestao(e.target.value)}
+                          className="font-mono"
+                        />
+                        <Button size="icon" variant="outline" onClick={() => handleApplyRateio("Pessoal — Gestão", globalGestao)}>
+                          <Calculator className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+
                     <div className="space-y-2">
                       <Label className="text-xs uppercase font-bold text-muted-foreground">Alimentação Escolar (Total)</Label>
                       <div className="flex gap-2">
