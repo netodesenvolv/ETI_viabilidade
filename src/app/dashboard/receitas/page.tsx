@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Info, Loader2, AlertCircle, Calculator, Eye, ListFilter, TrendingUp, DollarSign } from "lucide-react";
+import { Info, Loader2, AlertCircle, Calculator, Eye, ListFilter, TrendingUp, DollarSign, ArrowUpDown, ChevronUp, ChevronDown } from "lucide-react";
 import { useAuth, useFirestore, useUser, useDoc, useCollection } from "@/firebase";
 import { doc, collection } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,7 @@ export default function ReceitasPage() {
   const paramsRef = useMemo(() => (db && municipioId ? doc(db, 'municipios', municipioId, 'config', 'parameters') : null), [db, municipioId]);
   const { data: customParams } = useDoc(paramsRef);
   const parametros = (customParams as any) || DEFAULT_PARAMETERS;
+  const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'nome', direction: 'asc' });
 
   // FILTRO CENTRAL: Apenas escolas da rede municipal ('3')
   const municipalSchools = useMemo(() => {
@@ -65,7 +66,8 @@ export default function ReceitasPage() {
         vaaf,
         vaat,
         pnae,
-        mde_outros: mde + outros,
+        mde,
+        outros,
         total,
         perStudent
       };
@@ -77,9 +79,37 @@ export default function ReceitasPage() {
       vaaf: acc.vaaf + s.vaaf,
       vaat: acc.vaat + s.vaat,
       pnae: acc.pnae + s.pnae,
+      mde: acc.mde + s.mde,
+      outros: acc.outros + s.outros,
       total: acc.total + s.total
-    }), { vaaf: 0, vaat: 0, pnae: 0, total: 0 });
+    }), { vaaf: 0, vaat: 0, pnae: 0, mde: 0, outros: 0, total: 0 });
   }, [schoolRevenueData]);
+
+  const sortedSchoolRevenueData = useMemo(() => {
+    let items = [...schoolRevenueData];
+    if (sortConfig) {
+      items.sort((a: any, b: any) => {
+        const valA = a[sortConfig.key];
+        const valB = b[sortConfig.key];
+        
+        if (typeof valA === 'string') {
+          return sortConfig.direction === 'asc' 
+            ? valA.localeCompare(valB)
+            : valB.localeCompare(valA);
+        }
+        
+        return sortConfig.direction === 'asc' ? valA - valB : valB - valA;
+      });
+    }
+    return items;
+  }, [schoolRevenueData, sortConfig]);
+
+  const toggleSort = (key: string) => {
+    setSortConfig(current => ({
+      key,
+      direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
 
   if (profileLoading || schoolsLoading) {
     return (
@@ -117,11 +147,13 @@ export default function ReceitasPage() {
         </Badge>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <KPICard title="VAAf Total (Rede)" value={`R$ ${(networkTotals.vaaf / 1e6).toFixed(2)}M`} icon={TrendingUp} subtitle="Repasses FUNDEB" />
-        <KPICard title="VAAT Projetado" value={`R$ ${(networkTotals.vaat / 1e6).toFixed(2)}M`} icon={DollarSign} subtitle="Complementação VAAT" />
-        <KPICard title="PNAE Alimentação" value={`R$ ${(networkTotals.pnae / 1000).toFixed(1)}k`} icon={Calculator} subtitle="Recurso Merenda" />
-        <KPICard title="Receita Total Estimada" value={`R$ ${(networkTotals.total / 1e6).toFixed(2)}M`} icon={TrendingUp} className="bg-primary text-white" />
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <KPICard title="VAAf Total" value={`R$ ${(networkTotals.vaaf / 1e6).toFixed(1)}M`} icon={TrendingUp} subtitle="Rede Direta" />
+        <KPICard title="VAAT Projetado" value={`R$ ${(networkTotals.vaat / 1e6).toFixed(1)}M`} icon={DollarSign} subtitle="Complementação" />
+        <KPICard title="PNAE Merenda" value={`R$ ${(networkTotals.pnae / 1e3).toFixed(1)}k`} icon={Calculator} subtitle="Alimentação" />
+        <KPICard title="Valor Bruto MDE" value={`R$ ${(networkTotals.mde / 1e6).toFixed(1)}M`} icon={Calculator} subtitle="Recursos Próprios" />
+        <KPICard title="Quota QSE" value={`R$ ${(networkTotals.outros / 1e6).toFixed(1)}M`} icon={DollarSign} subtitle="Salário Educação" />
+        <KPICard title="Receita Total" value={`R$ ${(networkTotals.total / 1e6).toFixed(2)}M`} icon={TrendingUp} className="bg-primary text-white" />
       </div>
 
       <Card className="border-none shadow-md">
@@ -135,17 +167,67 @@ export default function ReceitasPage() {
               <Table>
                 <TableHeader className="bg-muted/50 sticky top-0 z-10 backdrop-blur-sm">
                   <TableRow>
-                    <TableHead>Escola Municipal</TableHead>
-                    <TableHead className="text-right">VAAf (R$)</TableHead>
-                    <TableHead className="text-right">VAAT (R$)</TableHead>
-                    <TableHead className="text-right">PNAE (R$)</TableHead>
-                    <TableHead className="text-right">MDE/QSE (R$)</TableHead>
-                    <TableHead className="text-right">Total Escola</TableHead>
+                    <TableHead className="cursor-pointer hover:bg-muted/80 transition-colors" onClick={() => toggleSort('nome')}>
+                      <div className="flex items-center gap-2">
+                        Escola Municipal
+                        {sortConfig.key === 'nome' ? (
+                          sortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                        ) : <ArrowUpDown className="h-3 w-3 opacity-30" />}
+                      </div>
+                    </TableHead>
+                    <TableHead className="text-right cursor-pointer hover:bg-muted/80 transition-colors" onClick={() => toggleSort('vaaf')}>
+                      <div className="flex items-center justify-end gap-2">
+                        VAAf (R$)
+                        {sortConfig.key === 'vaaf' ? (
+                          sortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                        ) : <ArrowUpDown className="h-3 w-3 opacity-30" />}
+                      </div>
+                    </TableHead>
+                    <TableHead className="text-right cursor-pointer hover:bg-muted/80 transition-colors" onClick={() => toggleSort('vaat')}>
+                      <div className="flex items-center justify-end gap-2">
+                        VAAT (R$)
+                        {sortConfig.key === 'vaat' ? (
+                          sortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                        ) : <ArrowUpDown className="h-3 w-3 opacity-30" />}
+                      </div>
+                    </TableHead>
+                    <TableHead className="text-right cursor-pointer hover:bg-muted/80 transition-colors" onClick={() => toggleSort('pnae')}>
+                      <div className="flex items-center justify-end gap-2">
+                        PNAE (R$)
+                        {sortConfig.key === 'pnae' ? (
+                          sortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                        ) : <ArrowUpDown className="h-3 w-3 opacity-30" />}
+                      </div>
+                    </TableHead>
+                    <TableHead className="text-right cursor-pointer hover:bg-muted/80 transition-colors" onClick={() => toggleSort('mde')}>
+                      <div className="flex items-center justify-end gap-2">
+                        MDE (R$)
+                        {sortConfig.key === 'mde' ? (
+                          sortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                        ) : <ArrowUpDown className="h-3 w-3 opacity-30" />}
+                      </div>
+                    </TableHead>
+                    <TableHead className="text-right cursor-pointer hover:bg-muted/80 transition-colors" onClick={() => toggleSort('outros')}>
+                      <div className="flex items-center justify-end gap-2">
+                        QSE (R$)
+                        {sortConfig.key === 'outros' ? (
+                          sortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                        ) : <ArrowUpDown className="h-3 w-3 opacity-30" />}
+                      </div>
+                    </TableHead>
+                    <TableHead className="text-right cursor-pointer hover:bg-muted/80 transition-colors" onClick={() => toggleSort('total')}>
+                      <div className="flex items-center justify-end gap-2">
+                        Total Escola
+                        {sortConfig.key === 'total' ? (
+                          sortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                        ) : <ArrowUpDown className="h-3 w-3 opacity-30" />}
+                      </div>
+                    </TableHead>
                     <TableHead className="text-center">Auditoria</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {schoolRevenueData.map((school) => (
+                  {sortedSchoolRevenueData.map((school) => (
                     <TableRow key={school.id}>
                       <TableCell>
                         <div className="font-medium text-sm">{school.nome}</div>
@@ -158,7 +240,8 @@ export default function ReceitasPage() {
                       <TableCell className="text-right text-xs">R$ {school.vaaf.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
                       <TableCell className="text-right text-xs">R$ {school.vaat.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
                       <TableCell className="text-right text-xs">R$ {school.pnae.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
-                      <TableCell className="text-right text-xs">R$ {school.mde_outros.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                      <TableCell className="text-right text-xs">R$ {school.mde.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                      <TableCell className="text-right text-xs">R$ {school.outros.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
                       <TableCell className="text-right font-bold text-primary">R$ {school.total.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
                       <TableCell className="text-center">
                         <Dialog>
@@ -216,7 +299,9 @@ export default function ReceitasPage() {
                     <TableCell>TOTAIS DA REDE MUNICIPAL</TableCell>
                     <TableCell className="text-right">R$ {networkTotals.vaaf.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
                     <TableCell className="text-right">R$ {networkTotals.vaat.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
-                    <TableCell className="text-right">R$ {networkTotals.pnae.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                    <TableCell className="text-right text-xs">R$ {networkTotals.pnae.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                    <TableCell className="text-right text-xs">R$ {networkTotals.mde.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
+                    <TableCell className="text-right text-xs">R$ {networkTotals.outros.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
                     <TableCell colSpan={2} className="text-right text-lg text-primary">R$ {networkTotals.total.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</TableCell>
                     <TableCell></TableCell>
                   </TableRow>

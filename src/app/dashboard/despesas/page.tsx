@@ -26,7 +26,9 @@ import {
   Share2, 
   Info,
   Eye,
-  Search
+  Search,
+  Database,
+  Briefcase
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
@@ -68,6 +70,48 @@ const EXPENSE_CATEGORIES = [
   "Serviços Terceirizados",
   "Outros",
 ];
+
+// Componente auxiliar para evitar o bug do cursor pulando ao formatar moeda
+function MoneyInput({ value, onChange, id, className, placeholder, decimals = 2, onBlur }: any) {
+  const [editingValue, setEditingValue] = useState<string | null>(null);
+
+  const formatOptions = { 
+    minimumFractionDigits: decimals, 
+    maximumFractionDigits: decimals 
+  };
+
+  const displayValue = editingValue !== null 
+    ? editingValue 
+    : (value ?? 0).toLocaleString('pt-BR', formatOptions);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let raw = e.target.value.replace(/[^\d,.-]/g, '');
+    setEditingValue(raw);
+    
+    // Converte para número para o pai
+    const num = parseFloat(raw.replace(/\./g, '').replace(',', '.')) || 0;
+    onChange(num);
+  };
+
+  return (
+    <Input
+      id={id}
+      className={className}
+      value={displayValue}
+      onChange={handleChange}
+      onFocus={() => {
+        // Formata para edição (ex: 1234.56 -> 1234,56)
+        const val = (value ?? 0).toString().replace('.', ',');
+        setEditingValue(val);
+      }}
+      onBlur={() => {
+        setEditingValue(null);
+        if (onBlur) onBlur();
+      }}
+      placeholder={placeholder}
+    />
+  );
+}
 
 interface SchoolExpenseEntry {
   schoolId: string;
@@ -118,6 +162,126 @@ export default function DespesasPage() {
 
   // Estado para armazenar despesas (lançamentos temporários da sessão)
   const [expenses, setExpenses] = useState<SchoolExpenseEntry[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterCategory, setFilterCategory] = useState<string | null>(null);
+
+  // Despesas já salvas no Banco de Dados
+  const expensesColRef = useMemo(() => (db && municipioId ? collection(db, 'municipios', municipioId, 'expenses') : null), [db, municipioId]);
+  const { data: dbExpenses, loading: dbLoading } = useCollection(expensesColRef);
+  
+  // Sincronizar dados do banco para a sessão de edição (apenas no carregamento inicial)
+  const [hasSynced, setHasSynced] = useState(false);
+
+  useEffect(() => {
+    if (dbExpenses && dbExpenses.length > 0 && !hasSynced && !isImporting) {
+      const merged: Record<string, SchoolExpenseEntry> = {};
+      
+      // Ordenar por updatedAt para garantir que pegamos o mais recente em caso de duplicatas no banco
+      const sorted = [...dbExpenses].sort((a, b) => 
+        new Date(a.updatedAt || 0).getTime() - new Date(b.updatedAt || 0).getTime()
+      );
+
+      sorted.forEach((exp: any) => {
+        const key = `${exp.schoolId}_${exp.category}`;
+        merged[key] = {
+          schoolId: exp.schoolId,
+          category: exp.category,
+          value: exp.value
+        };
+      });
+
+      setExpenses(Object.values(merged));
+      setHasSynced(true);
+    }
+  }, [dbExpenses, hasSynced, isImporting]);
+
+  const schoolMap = useMemo(() => {
+    const map: Record<string, string> = {
+      'SECRETARIA': 'Secretaria de Educação (Órgão Central)'
+    };
+    schools.forEach((s: any) => {
+      map[s.id] = s.nome;
+    });
+    return map;
+  }, [schools]);
+
+  const handleUpdateDBValue = async (expenseId: string, newValue: string) => {
+    if (!db || !municipioId) return;
+    
+    const cleanValue = newValue.replace(/\./g, '').replace(',', '.');
+    const numericValue = parseFloat(cleanValue) || 0;
+    
+    const expenseRef = doc(db, 'municipios', municipioId, 'expenses', expenseId);
+    try {
+      await setDoc(expenseRef, { 
+        value: numericValue, 
+        updatedAt: new Date().toISOString() 
+      }, { merge: true });
+      
+      toast({ 
+        title: "Registro Atualizado", 
+        description: "O valor foi salvo permanentemente no banco de dados." 
+      });
+    } catch (error) {
+      toast({ 
+        title: "Erro ao Atualizar", 
+        description: "Não foi possível salvar a alteração no banco.",
+        variant: "destructive" 
+      });
+    }
+  };
+
+  const dbCategoryTotals = useMemo(() => {
+    if (!dbExpenses) return {};
+    
+    // Deduplicar antes de somar para evitar inflação por registros antigos
+    const merged: Record<string, number> = {};
+    const processedKeys = new Set();
+    
+    // Ordenar decrescente para pegar o mais recente primeiro
+    const sorted = [...dbExpenses].sort((a, b) => 
+      new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
+    );
+
+    const categorySums: Record<string, number> = {};
+    
+    sorted.forEach((exp: any) => {
+      const key = `${exp.schoolId}_${exp.category}`;
+      if (!processedKeys.has(key)) {
+        const cat = exp.category || "Outros";
+        categorySums[cat] = (categorySums[cat] || 0) + (exp.value || 0);
+        processedKeys.add(key);
+      }
+    });
+    
+    return categorySums;
+  }, [dbExpenses]);
+
+  const filteredDBExpenses = useMemo(() => {
+    if (!dbExpenses) return [];
+    
+    // Deduplicar para exibição: apenas o registro mais recente por categoria/escola
+    const merged: Record<string, any> = {};
+    const sorted = [...dbExpenses].sort((a, b) => 
+      new Date(a.updatedAt || 0).getTime() - new Date(b.updatedAt || 0).getTime()
+    );
+
+    sorted.forEach((exp: any) => {
+      const key = `${exp.schoolId}_${exp.category}`;
+      merged[key] = exp;
+    });
+
+    const deduped = Object.values(merged);
+
+    return deduped.filter((exp: any) => {
+      const matchesCategory = filterCategory ? exp.category === filterCategory : true;
+      const schoolName = (schoolMap[exp.schoolId] || "").toLowerCase();
+      const category = (exp.category || "").toLowerCase();
+      const term = searchTerm.toLowerCase();
+      const matchesSearch = schoolName.includes(term) || category.includes(term);
+      return matchesCategory && matchesSearch;
+    });
+  }, [dbExpenses, searchTerm, schoolMap, filterCategory]);
 
   // Seta a primeira escola municipal quando carregar
   useEffect(() => {
@@ -148,7 +312,12 @@ export default function DespesasPage() {
     setIsSaving(true);
     
     try {
+      // Para garantir que não deixaremos "lixo" no banco, se estivermos salvando uma escola específica,
+      // poderíamos limpar antes, mas o setDoc com ID determinístico já resolve a maioria dos casos.
+      
       const promises = expenses.map(entry => {
+        // ID determinístico: escola_categoria_ano
+        // Substituímos caracteres especiais para garantir um ID de documento válido no Firestore
         const sanitizedCategory = entry.category.replace(/[\s/()]+/g, '_');
         const expenseId = `${entry.schoolId}_${sanitizedCategory}_2026`;
         const expenseRef = doc(db, 'municipios', municipioId, 'expenses', expenseId);
@@ -158,7 +327,8 @@ export default function DespesasPage() {
           category: entry.category,
           value: entry.value,
           year: 2026,
-          updatedAt: new Date().toISOString()
+          updatedAt: new Date().toISOString(),
+          updatedBy: user?.email
         };
 
         return setDoc(expenseRef, data, { merge: true })
@@ -397,6 +567,12 @@ export default function DespesasPage() {
           <TabsTrigger value="consolidated" className="gap-2">
             <Landmark className="h-4 w-4" /> Consolidado Municipal
           </TabsTrigger>
+          <TabsTrigger value="secretaria" className="gap-2">
+            <Briefcase className="h-4 w-4" /> Secretaria
+          </TabsTrigger>
+          <TabsTrigger value="database" className="gap-2">
+            <Database className="h-4 w-4" /> Conferência de Lançamentos
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="individual">
@@ -441,7 +617,7 @@ export default function DespesasPage() {
             <Card className="lg:col-span-3">
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
-                  <CardTitle className="text-lg">Detalhamento de Custos</CardTitle>
+                  <CardTitle className="text-lg">Detalhamento de Custos: {selectedSchool === 'SECRETARIA' ? 'Órgão Central' : 'Unidade Escolar'}</CardTitle>
                   <CardDescription>Valores anuais referentes ao tesouro municipal</CardDescription>
                 </div>
               </CardHeader>
@@ -461,11 +637,11 @@ export default function DespesasPage() {
                         <TableRow key={idx}>
                           <TableCell className="font-medium">{cat}</TableCell>
                           <TableCell>
-                            <Input 
+                            <MoneyInput 
                               className="text-right font-mono" 
                               placeholder="0,00" 
-                              value={entry ? entry.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : ""}
-                              onChange={(e) => handleUpdateValue(cat, e.target.value)}
+                              value={entry ? entry.value : 0}
+                              onChange={(val: number) => handleUpdateValue(cat, val.toString().replace('.', ','))}
                             />
                           </TableCell>
                           <TableCell>
@@ -497,16 +673,103 @@ export default function DespesasPage() {
           </div>
         </TabsContent>
 
+        <TabsContent value="secretaria">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            <Card className="lg:col-span-1 h-fit">
+              <CardHeader>
+                <CardTitle className="text-lg">Órgão Central</CardTitle>
+                <CardDescription>Secretaria Municipal de Educação</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="p-4 bg-primary/5 rounded-xl border border-primary/10 flex flex-col items-center text-center gap-3">
+                  <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                    <Briefcase className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold uppercase text-muted-foreground">Total da Secretaria</p>
+                    <p className="text-2xl font-bold text-primary">
+                      R$ {(schoolExpensesSum['SECRETARIA'] || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-[10px] text-muted-foreground leading-tight text-center">
+                  Lance aqui os custos que não são vinculados diretamente às unidades escolares, como sede administrativa e equipes centrais.
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="lg:col-span-3">
+              <CardHeader>
+                <CardTitle className="text-lg">Detalhamento de Custos Administrativos</CardTitle>
+                <CardDescription>Custos anuais da Secretaria de Educação</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/30">
+                      <TableHead>Categoria</TableHead>
+                      <TableHead className="w-[200px] text-right">Valor Anual (R$)</TableHead>
+                      <TableHead className="w-[50px]"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {EXPENSE_CATEGORIES.map((cat, idx) => {
+                      const entry = expenses.find(e => e.schoolId === 'SECRETARIA' && e.category === cat);
+                      return (
+                        <TableRow key={idx}>
+                          <TableCell className="font-medium">{cat}</TableCell>
+                          <TableCell>
+                            <MoneyInput 
+                              className="text-right font-mono" 
+                              placeholder="0,00" 
+                              value={entry ? entry.value : 0}
+                              onChange={(val: number) => {
+                                setExpenses(prev => {
+                                  const filtered = prev.filter(e => !(e.schoolId === 'SECRETARIA' && e.category === cat));
+                                  return [...filtered, { schoolId: 'SECRETARIA', category: cat, value: val }];
+                                });
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                              onClick={() => setExpenses(prev => prev.filter(e => !(e.schoolId === 'SECRETARIA' && e.category === cat)))}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                  <TableFooter>
+                    <TableRow className="bg-primary/5 font-bold">
+                      <TableCell>TOTAL DA SECRETARIA (SESSÃO)</TableCell>
+                      <TableCell className="text-right text-lg text-primary">
+                        R$ {(schoolExpensesSum['SECRETARIA'] || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </TableCell>
+                      <TableCell></TableCell>
+                    </TableRow>
+                  </TableFooter>
+                </Table>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
         <TabsContent value="consolidated">
           <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <Card className="bg-primary text-white border-none shadow-lg">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-xs font-medium text-white/70 uppercase">Custo Total Sessão</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-3xl font-bold">R$ {totalNetworkExpenses.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                  <p className="text-[10px] text-white/60 mt-2">Cobertura: {Object.keys(schoolExpensesSum).length} escolas</p>
+                  <p className="text-[10px] text-white/60 mt-2">Cobertura: {Object.keys(schoolExpensesSum).length} unidades</p>
                 </CardContent>
               </Card>
               
@@ -518,8 +781,23 @@ export default function DespesasPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{Object.keys(schoolExpensesSum).length} / {schools.length}</div>
-                  <p className="text-[10px] text-muted-foreground mt-2">Unidades com dados nesta sessão</p>
+                  <div className="text-2xl font-bold">{Object.keys(schoolExpensesSum).filter(id => id !== 'SECRETARIA').length} / {schools.length}</div>
+                  <p className="text-[10px] text-muted-foreground mt-2">Escolas com dados nesta sessão</p>
+                </CardContent>
+              </Card>
+
+              <Card className="border-none shadow-md">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs font-medium text-muted-foreground uppercase flex items-center gap-2">
+                    <Briefcase className="h-4 w-4 text-primary" />
+                    Custos Secretaria
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    R$ {(schoolExpensesSum['SECRETARIA'] || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-2">Órgão Central</p>
                 </CardContent>
               </Card>
 
@@ -551,10 +829,10 @@ export default function DespesasPage() {
                     <div className="space-y-2">
                       <Label className="text-xs uppercase font-bold text-muted-foreground">Pessoal — Docentes (Total)</Label>
                       <div className="flex gap-2">
-                        <Input 
+                        <MoneyInput 
                           placeholder="R$ 0,00" 
-                          value={globalDocentes} 
-                          onChange={e => setGlobalDocentes(e.target.value)}
+                          value={parseFloat(globalDocentes.replace(/\./g, '').replace(',', '.')) || 0} 
+                          onChange={(val: number) => setGlobalDocentes(val.toLocaleString('pt-BR', { minimumFractionDigits: 2 }))}
                           className="font-mono"
                         />
                         <Button size="icon" variant="outline" onClick={() => handleApplyRateio("Pessoal — Docentes", globalDocentes)}>
@@ -566,10 +844,10 @@ export default function DespesasPage() {
                     <div className="space-y-2">
                       <Label className="text-xs uppercase font-bold text-muted-foreground">Pessoal — Monitores (Total)</Label>
                       <div className="flex gap-2">
-                        <Input 
+                        <MoneyInput 
                           placeholder="R$ 0,00" 
-                          value={globalMonitores} 
-                          onChange={e => setGlobalMonitores(e.target.value)}
+                          value={parseFloat(globalMonitores.replace(/\./g, '').replace(',', '.')) || 0} 
+                          onChange={(val: number) => setGlobalMonitores(val.toLocaleString('pt-BR', { minimumFractionDigits: 2 }))}
                           className="font-mono"
                         />
                         <Button size="icon" variant="outline" onClick={() => handleApplyRateio("Pessoal — Monitores", globalMonitores)}>
@@ -581,10 +859,10 @@ export default function DespesasPage() {
                     <div className="space-y-2">
                       <Label className="text-xs uppercase font-bold text-muted-foreground">Pessoal — Gestão (Total)</Label>
                       <div className="flex gap-2">
-                        <Input 
+                        <MoneyInput 
                           placeholder="R$ 0,00" 
-                          value={globalGestao} 
-                          onChange={e => setGlobalGestao(e.target.value)}
+                          value={parseFloat(globalGestao.replace(/\./g, '').replace(',', '.')) || 0} 
+                          onChange={(val: number) => setGlobalGestao(val.toLocaleString('pt-BR', { minimumFractionDigits: 2 }))}
                           className="font-mono"
                         />
                         <Button size="icon" variant="outline" onClick={() => handleApplyRateio("Pessoal — Gestão", globalGestao)}>
@@ -596,10 +874,10 @@ export default function DespesasPage() {
                     <div className="space-y-2">
                       <Label className="text-xs uppercase font-bold text-muted-foreground">Alimentação Escolar (Total)</Label>
                       <div className="flex gap-2">
-                        <Input 
+                        <MoneyInput 
                           placeholder="R$ 0,00" 
-                          value={globalAlimentacao} 
-                          onChange={e => setGlobalAlimentacao(e.target.value)}
+                          value={parseFloat(globalAlimentacao.replace(/\./g, '').replace(',', '.')) || 0} 
+                          onChange={(val: number) => setGlobalAlimentacao(val.toLocaleString('pt-BR', { minimumFractionDigits: 2 }))}
                           className="font-mono"
                         />
                         <Button size="icon" variant="outline" onClick={() => handleApplyRateio("Alimentação Escolar", globalAlimentacao)}>
@@ -611,10 +889,10 @@ export default function DespesasPage() {
                     <div className="space-y-2">
                       <Label className="text-xs uppercase font-bold text-muted-foreground">Transporte (Total)</Label>
                       <div className="flex gap-2">
-                        <Input 
+                        <MoneyInput 
                           placeholder="R$ 0,00" 
-                          value={globalTransporte} 
-                          onChange={e => setGlobalTransporte(e.target.value)}
+                          value={parseFloat(globalTransporte.replace(/\./g, '').replace(',', '.')) || 0} 
+                          onChange={(val: number) => setGlobalTransporte(val.toLocaleString('pt-BR', { minimumFractionDigits: 2 }))}
                           className="font-mono"
                         />
                         <Button size="icon" variant="outline" onClick={() => handleApplyRateio("Transporte", globalTransporte)}>
@@ -626,10 +904,10 @@ export default function DespesasPage() {
                     <div className="space-y-2">
                       <Label className="text-xs uppercase font-bold text-muted-foreground">Utilidades (Total)</Label>
                       <div className="flex gap-2">
-                        <Input 
+                        <MoneyInput 
                           placeholder="R$ 0,00" 
-                          value={globalUtilidades} 
-                          onChange={e => setGlobalUtilidades(e.target.value)}
+                          value={parseFloat(globalUtilidades.replace(/\./g, '').replace(',', '.')) || 0} 
+                          onChange={(val: number) => setGlobalUtilidades(val.toLocaleString('pt-BR', { minimumFractionDigits: 2 }))}
                           className="font-mono"
                         />
                         <Button size="icon" variant="outline" onClick={() => handleApplyRateio("Utilidades (Energia/Água)", globalUtilidades)}>
@@ -641,10 +919,10 @@ export default function DespesasPage() {
                     <div className="space-y-2">
                       <Label className="text-xs uppercase font-bold text-muted-foreground">Material Didático (Total)</Label>
                       <div className="flex gap-2">
-                        <Input 
+                        <MoneyInput 
                           placeholder="R$ 0,00" 
-                          value={globalMaterial} 
-                          onChange={e => setGlobalMaterial(e.target.value)}
+                          value={parseFloat(globalMaterial.replace(/\./g, '').replace(',', '.')) || 0} 
+                          onChange={(val: number) => setGlobalMaterial(val.toLocaleString('pt-BR', { minimumFractionDigits: 2 }))}
                           className="font-mono"
                         />
                         <Button size="icon" variant="outline" onClick={() => handleApplyRateio("Material Didático", globalMaterial)}>
@@ -656,10 +934,10 @@ export default function DespesasPage() {
                     <div className="space-y-2">
                       <Label className="text-xs uppercase font-bold text-muted-foreground">Serviços Terceirizados (Total)</Label>
                       <div className="flex gap-2">
-                        <Input 
+                        <MoneyInput 
                           placeholder="R$ 0,00" 
-                          value={globalServicos} 
-                          onChange={e => setGlobalServicos(e.target.value)}
+                          value={parseFloat(globalServicos.replace(/\./g, '').replace(',', '.')) || 0} 
+                          onChange={(val: number) => setGlobalServicos(val.toLocaleString('pt-BR', { minimumFractionDigits: 2 }))}
                           className="font-mono"
                         />
                         <Button size="icon" variant="outline" onClick={() => handleApplyRateio("Serviços Terceirizados", globalServicos)}>
@@ -671,10 +949,10 @@ export default function DespesasPage() {
                     <div className="space-y-2">
                       <Label className="text-xs uppercase font-bold text-muted-foreground">Outros Custos (Total)</Label>
                       <div className="flex gap-2">
-                        <Input 
+                        <MoneyInput 
                           placeholder="R$ 0,00" 
-                          value={globalOutros} 
-                          onChange={e => setGlobalOutros(e.target.value)}
+                          value={parseFloat(globalOutros.replace(/\./g, '').replace(',', '.')) || 0} 
+                          onChange={(val: number) => setGlobalOutros(val.toLocaleString('pt-BR', { minimumFractionDigits: 2 }))}
                           className="font-mono"
                         />
                         <Button size="icon" variant="outline" onClick={() => handleApplyRateio("Outros", globalOutros)}>
@@ -872,6 +1150,148 @@ export default function DespesasPage() {
               </Card>
             </div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="database">
+          <Card>
+            <CardHeader className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <CardTitle className="text-lg">Registros no Banco de Dados</CardTitle>
+                <CardDescription>Visualize e edite manualmente os valores já persistidos.</CardDescription>
+              </div>
+              <div className="relative w-full md:w-72">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar escola ou categoria..."
+                  className="pl-8"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Totalizadores por Categoria */}
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                {EXPENSE_CATEGORIES.map(cat => {
+                  const total = dbCategoryTotals[cat] || 0;
+                  if (total === 0) return null;
+                  const isActive = filterCategory === cat;
+                  
+                  return (
+                    <div 
+                      key={cat} 
+                      onClick={() => setFilterCategory(isActive ? null : cat)}
+                      className={`p-3 border rounded-xl cursor-pointer transition-all hover:shadow-md ${
+                        isActive 
+                          ? 'bg-primary border-primary text-white shadow-md' 
+                          : 'bg-muted/20 hover:bg-muted/40'
+                      }`}
+                    >
+                      <p className={`text-[9px] uppercase font-bold truncate ${isActive ? 'text-white/80' : 'text-muted-foreground'}`} title={cat}>{cat}</p>
+                      <p className={`text-sm font-bold ${isActive ? 'text-white' : 'text-primary'}`}>
+                        R$ {total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                  );
+                })}
+                {dbCategoryTotals["Outros"] > 0 && !EXPENSE_CATEGORIES.includes("Outros") && (
+                   <div className="p-3 border rounded-xl bg-muted/20">
+                    <p className="text-[9px] uppercase font-bold text-muted-foreground">Outros</p>
+                    <p className="text-sm font-bold text-primary">
+                      R$ {dbCategoryTotals["Outros"].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                )}
+                <div 
+                  onClick={() => setFilterCategory(null)}
+                  className={`p-3 border rounded-xl cursor-pointer transition-all hover:shadow-md ${
+                    filterCategory === null 
+                      ? 'bg-primary/10 border-primary shadow-sm' 
+                      : 'bg-white border-dashed hover:bg-muted/20'
+                  }`}
+                >
+                  <p className="text-[9px] uppercase font-bold text-primary">Total Geral no Banco</p>
+                  <p className="text-sm font-bold text-primary">
+                    R$ {Object.values(dbCategoryTotals).reduce((a, b) => a + b, 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </p>
+                </div>
+              </div>
+
+              <div className="border rounded-xl overflow-hidden">
+                <ScrollArea className="h-[600px]">
+                  <Table>
+                    <TableHeader className="bg-muted/80 sticky top-0 z-10 backdrop-blur-sm">
+                      <TableRow>
+                        <TableHead>Unidade Escolar</TableHead>
+                        <TableHead>Categoria</TableHead>
+                        <TableHead className="text-right">Valor Atual (R$)</TableHead>
+                        <TableHead className="text-right">Última Atualização</TableHead>
+                        <TableHead className="w-[100px]"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {dbLoading ? (
+                        <TableRow>
+                          <TableCell colSpan={5} className="h-24 text-center">
+                            <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
+                          </TableCell>
+                        </TableRow>
+                      ) : filteredDBExpenses && filteredDBExpenses.length > 0 ? (
+                        filteredDBExpenses
+                          .sort((a: any, b: any) => (schoolMap[a.schoolId] || "").localeCompare(schoolMap[b.schoolId] || ""))
+                          .map((exp: any) => (
+                            <TableRow key={exp.id}>
+                              <TableCell className="font-medium">
+                                <div className="text-sm">{schoolMap[exp.schoolId] || "Escola não encontrada"}</div>
+                                <div className="text-[10px] text-muted-foreground font-mono">ID: {exp.schoolId}</div>
+                              </TableCell>
+                              <TableCell className="text-xs">{exp.category}</TableCell>
+                              <TableCell>
+                                <MoneyInput 
+                                  className="text-right font-mono h-8" 
+                                  value={exp.value}
+                                  onBlur={() => {}}
+                                  onChange={(val: number) => {
+                                    if (val !== exp.value) {
+                                      handleUpdateDBValue(exp.id, val.toString().replace('.', ','));
+                                    }
+                                  }}
+                                />
+                              </TableCell>
+                              <TableCell className="text-right text-[10px] text-muted-foreground">
+                                {exp.updatedAt ? new Date(exp.updatedAt).toLocaleString('pt-BR') : 'N/D'}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                  onClick={async () => {
+                                    if (confirm("Deseja realmente excluir este registro permanentemente?")) {
+                                      const expenseRef = doc(db!, 'municipios', municipioId!, 'expenses', exp.id);
+                                      await deleteDoc(expenseRef);
+                                      toast({ title: "Registro removido" });
+                                    }
+                                  }}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                            Nenhum registro encontrado no banco de dados.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

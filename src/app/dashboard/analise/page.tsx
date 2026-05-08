@@ -8,14 +8,16 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
   Tooltip, 
   ResponsiveContainer, 
-  Legend
+  Legend,
+  ReferenceLine,
+  Cell
 } from "recharts";
 import { 
   Select, 
@@ -24,6 +26,7 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DEFAULT_PARAMETERS } from "@/lib/constants";
 import { calcularVAAF, calcularVAAT, calcularPNAE, calcularMDE, calcularOutros } from "@/lib/calculations";
 import { 
@@ -40,7 +43,10 @@ import {
   X,
   CheckCircle2,
   Copy,
-  Check
+  Check,
+  ArrowUpDown,
+  ChevronUp,
+  ChevronDown
 } from "lucide-react";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { useAuth, useFirestore, useUser, useDoc, useCollection } from "@/firebase";
@@ -58,11 +64,13 @@ export default function AnaliseCustoAlunoPage() {
   // Estados de Filtro
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("todos");
+  const [viewMode, setViewMode] = useState<'student' | 'annual'>('student');
   
   // Estados de IA
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiReport, setAiReport] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' });
 
   const userProfileRef = useMemo(() => (db && user ? doc(db, 'users', user.uid) : null), [db, user]);
   const { data: profile, loading: profileLoading } = useDoc(userProfileRef);
@@ -132,6 +140,32 @@ export default function AnaliseCustoAlunoPage() {
       return matchesSearch && matchesStatus;
     });
   }, [schools, expenses, parametros, searchTerm, statusFilter]);
+
+  const sortedAnalysisData = useMemo(() => {
+    let items = [...analysisData];
+    if (sortConfig) {
+      items.sort((a: any, b: any) => {
+        const valA = a[sortConfig.key];
+        const valB = b[sortConfig.key];
+        
+        if (typeof valA === 'string') {
+          return sortConfig.direction === 'asc' 
+            ? valA.localeCompare(valB)
+            : valB.localeCompare(valA);
+        }
+        
+        return sortConfig.direction === 'asc' ? valA - valB : valB - valA;
+      });
+    }
+    return items;
+  }, [analysisData, sortConfig]);
+
+  const toggleSort = (key: string) => {
+    setSortConfig(current => ({
+      key,
+      direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
 
   const networkStats = useMemo(() => {
     if (analysisData.length === 0) return null;
@@ -381,22 +415,85 @@ export default function AnaliseCustoAlunoPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2 shadow-md">
-          <CardHeader>
-            <CardTitle className="text-lg">Divergência Financeira por Unidade</CardTitle>
-            <CardDescription>Comparativo Receita vs Custo (Filtrado)</CardDescription>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <div>
+              <CardTitle className="text-lg">Divergência Financeira por Unidade</CardTitle>
+              <CardDescription>
+                {viewMode === 'student' ? 'Comparativo Receita vs Custo (Alunos/Ano)' : 'Comparativo Receita vs Custo (Anual Total)'}
+              </CardDescription>
+            </div>
+            <Tabs value={viewMode} onValueChange={(v: any) => setViewMode(v)}>
+              <TabsList className="grid w-[240px] grid-cols-2">
+                <TabsTrigger value="student" className="text-[10px]">Alunos/Ano</TabsTrigger>
+                <TabsTrigger value="annual" className="text-[10px]">Anual Total</TabsTrigger>
+              </TabsList>
+            </Tabs>
           </CardHeader>
           <CardContent className="h-[350px]">
-            <ChartContainer config={chartConfig}>
+            <ResponsiveContainer width="100%" height="100%">
               <BarChart data={analysisData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9 }} hide={analysisData.length > 15} />
-                <YAxis axisLine={false} tickLine={false} tickFormatter={(value) => `R$ ${value}`} />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Legend verticalAlign="top" height={36}/>
-                <Bar name="Receita/Aluno" dataKey="receita" fill="var(--color-receita)" radius={[4, 4, 0, 0]} />
-                <Bar name="Custo/Aluno" dataKey="custo" fill="var(--color-custo)" radius={[4, 4, 0, 0]} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
+                <XAxis 
+                  dataKey="name" 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 9, fill: '#64748b' }} 
+                  hide={analysisData.length > 20} 
+                />
+                <YAxis 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 10, fill: '#64748b' }}
+                  tickFormatter={(value: number) => {
+                    if (viewMode === 'annual') return `R$ ${(value / 1e6).toFixed(1)}M`;
+                    return `R$ ${(value / 1e3).toFixed(0)}k`;
+                  }} 
+                />
+                <Tooltip 
+                  cursor={{ fill: 'transparent' }}
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      const data = payload[0].payload;
+                      const isTotal = viewMode === 'annual';
+                      
+                      const formatVal = (v: number) => isTotal 
+                        ? `R$ ${v.toLocaleString('pt-BR')}` 
+                        : `R$ ${v.toLocaleString('pt-BR')}`;
+
+                      return (
+                        <div className="bg-white p-3 border shadow-xl rounded-lg space-y-1">
+                          <p className="font-bold text-xs border-b pb-1 mb-1">{data.name}</p>
+                          <div className="grid grid-cols-2 gap-x-4 text-[10px]">
+                            <span className="text-muted-foreground">{isTotal ? 'Receita Total:' : 'Receita/Alu:'}</span>
+                            <span className="text-right font-bold text-primary">{formatVal(isTotal ? data.raw.receitaTotal : data.receita)}</span>
+                            <span className="text-muted-foreground">{isTotal ? 'Custo Total:' : 'Custo/Alu:'}</span>
+                            <span className="text-right font-bold text-destructive">{formatVal(isTotal ? data.raw.totalDespesaReal : data.custo)}</span>
+                            <span className="text-muted-foreground">Saldo:</span>
+                            <span className={`text-right font-bold ${data.saldo >= 0 ? 'text-green-600' : 'text-destructive'}`}>{formatVal(isTotal ? (data.raw.receitaTotal - data.raw.totalDespesaReal) : data.saldo)}</span>
+                            <span className="text-muted-foreground">ETI:</span>
+                            <span className="text-right font-bold">{data.eti}%</span>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+                <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: 500 }} />
+                <Bar name={viewMode === 'student' ? 'Receita/Aluno' : 'Receita Total'} dataKey={viewMode === 'student' ? 'receita' : 'raw.receitaTotal'} fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} barSize={20} />
+                <Bar name={viewMode === 'student' ? 'Custo/Aluno' : 'Custo Total'} dataKey={viewMode === 'student' ? 'custo' : 'raw.totalDespesaReal'} fill="hsl(var(--destructive))" radius={[4, 4, 0, 0]} barSize={20} />
+                
+                {networkStats && (
+                  <ReferenceLine 
+                    y={viewMode === 'student' ? networkStats.avgReceita : sortedAnalysisData.reduce((acc, d) => acc + d.raw.receitaTotal, 0) / sortedAnalysisData.length} 
+                    stroke="hsl(var(--primary))" 
+                    strokeDasharray="3 3" 
+                    label={{ value: viewMode === 'student' ? 'Média Receita' : 'Média Total', position: 'insideRight', fill: 'hsl(var(--primary))', fontSize: 10 }} 
+                  />
+                )}
+                <ReferenceLine y={0} stroke="#000" />
               </BarChart>
-            </ChartContainer>
+            </ResponsiveContainer>
           </CardContent>
         </Card>
 
@@ -457,19 +554,75 @@ export default function AnaliseCustoAlunoPage() {
               <Table>
                 <TableHeader className="bg-muted/80 sticky top-0 z-10 backdrop-blur-sm">
                   <TableRow>
-                    <TableHead className="w-[300px]">Unidade Municipal</TableHead>
-                    <TableHead className="text-right">Alunos</TableHead>
-                    <TableHead className="text-right">% ETI</TableHead>
-                    <TableHead className="text-right">Receita/Aluno</TableHead>
-                    <TableHead className="text-right">Custo/Aluno</TableHead>
-                    <TableHead className="text-right">Saldo/Aluno</TableHead>
-                    <TableHead className="text-right">Sustentabilidade</TableHead>
-                    <TableHead className="text-center">Status</TableHead>
+                    <TableHead className="w-[300px] cursor-pointer hover:bg-muted transition-colors" onClick={() => toggleSort('name')}>
+                      <div className="flex items-center gap-2">
+                        Unidade Municipal
+                        {sortConfig.key === 'name' ? (
+                          sortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                        ) : <ArrowUpDown className="h-3 w-3 opacity-30" />}
+                      </div>
+                    </TableHead>
+                    <TableHead className="text-right cursor-pointer hover:bg-muted transition-colors" onClick={() => toggleSort('totalMatriculas')}>
+                      <div className="flex items-center justify-end gap-2">
+                        Alunos
+                        {sortConfig.key === 'totalMatriculas' ? (
+                          sortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                        ) : <ArrowUpDown className="h-3 w-3 opacity-30" />}
+                      </div>
+                    </TableHead>
+                    <TableHead className="text-right cursor-pointer hover:bg-muted transition-colors" onClick={() => toggleSort('eti')}>
+                      <div className="flex items-center justify-end gap-2">
+                        % ETI
+                        {sortConfig.key === 'eti' ? (
+                          sortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                        ) : <ArrowUpDown className="h-3 w-3 opacity-30" />}
+                      </div>
+                    </TableHead>
+                    <TableHead className="text-right cursor-pointer hover:bg-muted transition-colors" onClick={() => toggleSort(viewMode === 'student' ? 'receita' : 'raw.receitaTotal')}>
+                      <div className="flex items-center justify-end gap-2">
+                        {viewMode === 'student' ? 'Receita/Aluno' : 'Receita Anual'}
+                        {sortConfig.key === (viewMode === 'student' ? 'receita' : 'raw.receitaTotal') ? (
+                          sortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                        ) : <ArrowUpDown className="h-3 w-3 opacity-30" />}
+                      </div>
+                    </TableHead>
+                    <TableHead className="text-right cursor-pointer hover:bg-muted transition-colors" onClick={() => toggleSort(viewMode === 'student' ? 'custo' : 'raw.totalDespesaReal')}>
+                      <div className="flex items-center justify-end gap-2">
+                        {viewMode === 'student' ? 'Custo/Aluno' : 'Custo Anual'}
+                        {sortConfig.key === (viewMode === 'student' ? 'custo' : 'raw.totalDespesaReal') ? (
+                          sortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                        ) : <ArrowUpDown className="h-3 w-3 opacity-30" />}
+                      </div>
+                    </TableHead>
+                    <TableHead className="text-right cursor-pointer hover:bg-muted transition-colors" onClick={() => toggleSort('saldo')}>
+                      <div className="flex items-center justify-end gap-2">
+                        {viewMode === 'student' ? 'Saldo/Aluno' : 'Saldo Anual'}
+                        {sortConfig.key === 'saldo' ? (
+                          sortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                        ) : <ArrowUpDown className="h-3 w-3 opacity-30" />}
+                      </div>
+                    </TableHead>
+                    <TableHead className="text-right cursor-pointer hover:bg-muted transition-colors" onClick={() => toggleSort('sustentabilidade')}>
+                      <div className="flex items-center justify-end gap-2">
+                        Sustentabilidade
+                        {sortConfig.key === 'sustentabilidade' ? (
+                          sortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                        ) : <ArrowUpDown className="h-3 w-3 opacity-30" />}
+                      </div>
+                    </TableHead>
+                    <TableHead className="text-center cursor-pointer hover:bg-muted transition-colors" onClick={() => toggleSort('status')}>
+                      <div className="flex items-center justify-center gap-2">
+                        Status
+                        {sortConfig.key === 'status' ? (
+                          sortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                        ) : <ArrowUpDown className="h-3 w-3 opacity-30" />}
+                      </div>
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {analysisData.length > 0 ? (
-                    analysisData.map((school) => (
+                  {sortedAnalysisData.length > 0 ? (
+                    sortedAnalysisData.map((school) => (
                       <TableRow key={school.id} className="hover:bg-muted/30 text-xs">
                         <TableCell>
                           <div className="font-bold text-sm text-slate-800">{school.name}</div>
@@ -479,12 +632,14 @@ export default function AnaliseCustoAlunoPage() {
                         <TableCell className="text-right">
                           <Badge variant="outline" className="text-[10px] border-primary/20">{school.eti}%</Badge>
                         </TableCell>
-                        <TableCell className="text-right text-green-700 font-mono">R$ {school.receita.toLocaleString('pt-BR')}</TableCell>
-                        <TableCell className={`text-right font-mono ${school.custo > 0 ? 'text-destructive' : 'text-muted-foreground/30'}`}>
-                          R$ {school.custo.toLocaleString('pt-BR')}
+                        <TableCell className="text-right text-green-700 font-mono">
+                          R$ {(viewMode === 'student' ? school.receita : school.raw.receitaTotal).toLocaleString('pt-BR')}
+                        </TableCell>
+                        <TableCell className={`text-right font-mono ${(viewMode === 'student' ? school.custo : school.raw.totalDespesaReal) > 0 ? 'text-destructive' : 'text-muted-foreground/30'}`}>
+                          R$ {(viewMode === 'student' ? school.custo : school.raw.totalDespesaReal).toLocaleString('pt-BR')}
                         </TableCell>
                         <TableCell className={`text-right font-bold font-mono ${school.saldo >= 0 ? 'text-green-600' : 'text-destructive'}`}>
-                          R$ {school.saldo.toLocaleString('pt-BR')}
+                          R$ {(viewMode === 'student' ? school.saldo : (school.raw.receitaTotal - school.raw.totalDespesaReal)).toLocaleString('pt-BR')}
                         </TableCell>
                         <TableCell className={`text-right font-bold ${school.sustentabilidade >= 100 ? 'text-green-600' : 'text-destructive'}`}>
                           {school.sustentabilidade}%

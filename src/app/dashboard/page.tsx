@@ -23,7 +23,10 @@ import {
   Eye,
   Loader2,
   Search,
-  PieChart
+  PieChart,
+  ArrowUpDown,
+  ChevronUp,
+  ChevronDown
 } from "lucide-react";
 import { DEFAULT_PARAMETERS } from "@/lib/constants";
 import { calcularVAAF, calcularVAAT, calcularVAAR, calcularPNAE, calcularMDE, calcularOutros } from "@/lib/calculations";
@@ -63,6 +66,7 @@ export default function DashboardPage() {
   const [filterDependencia, setFilterDependencia] = useState<string>("3");
   const [filterETI, setFilterETI] = useState<string>("todas");
   const [mounted, setMounted] = useState(false);
+  const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'nome', direction: 'asc' });
 
   useEffect(() => {
     setMounted(true);
@@ -136,6 +140,51 @@ export default function DashboardPage() {
     const totalMatriculasRede = municipalSchools.reduce((acc, s: any) => acc + (s.total_matriculas || 0), 0);
     const totalETIRede = municipalSchools.reduce((acc, s: any) => acc + (s.total_eti || 0), 0);
     
+    const segmentTotals = municipalSchools.reduce((acc, s: any) => {
+      const m = s.matriculas || {};
+      const f = parametros.fatores;
+
+      const infantilRaw = (m.creche_integral || 0) + (m.creche_parcial || 0) + (m.creche_conveniada_int || 0) + (m.creche_conveniada_par || 0) + (m.pre_integral || 0) + (m.pre_parcial || 0);
+      const infantilWeighted = 
+        (m.creche_integral || 0) * (f.A1 || 1.550) +
+        (m.creche_parcial || 0) * (f.A2 || 1.250) +
+        (m.creche_conveniada_int || 0) * (f.A3 || 1.450) +
+        (m.creche_conveniada_par || 0) * (f.A4 || 1.150) +
+        (m.pre_integral || 0) * (f.B1 || 1.500) +
+        (m.pre_parcial || 0) * (f.B2 || 1.150);
+
+      const aiRaw = (m.ef_ai_integral || 0) + (m.ef_ai_parcial || 0);
+      const aiWeighted = (m.ef_ai_integral || 0) * (f.C1 || 1.300) + (m.ef_ai_parcial || 0) * (f.C2 || 1.000);
+
+      const afRaw = (m.ef_af_integral || 0) + (m.ef_af_parcial || 0);
+      const afWeighted = (m.ef_af_integral || 0) * (f.D1 || 1.300) + (m.ef_af_parcial || 0) * (f.D2 || 1.100);
+
+      const ejaRaw = (m.eja_fundamental || 0) + (m.eja_medio || 0);
+      const ejaWeighted = (m.eja_fundamental || 0) * (f.E1 || 0.800) + (m.eja_medio || 0) * (f.E2 || 0.850);
+
+      const totalInfantil = (m.creche_integral || 0) + (m.creche_parcial || 0) + (m.pre_integral || 0) + (m.pre_parcial || 0);
+      const totalAi = (m.ef_ai_integral || 0) + (m.ef_ai_parcial || 0);
+      const totalAf = (m.ef_af_integral || 0) + (m.ef_af_parcial || 0);
+      let fatorBaseAEE = f.C2 || 1.00; 
+      if (totalAf > totalAi && totalAf > totalInfantil) fatorBaseAEE = f.D2 || 1.10;
+      else if (totalInfantil > totalAi && totalInfantil > totalAf) fatorBaseAEE = f.B2 || 1.15;
+      
+      const especialRaw = (m.especial_aee || 0);
+      const especialWeighted = especialRaw * (fatorBaseAEE + (f.F1 || 1.40));
+
+      return {
+        infantil: { raw: acc.infantil.raw + infantilRaw, weighted: acc.infantil.weighted + infantilWeighted },
+        ai: { raw: acc.ai.raw + aiRaw, weighted: acc.ai.weighted + aiWeighted },
+        af: { raw: acc.af.raw + afRaw, weighted: acc.af.weighted + afWeighted },
+        eja: { raw: acc.eja.raw + ejaRaw, weighted: acc.eja.weighted + ejaWeighted },
+        especial: { raw: acc.especial.raw + especialRaw, weighted: acc.especial.weighted + especialWeighted }
+      };
+    }, {
+      infantil: { raw: 0, weighted: 0 }, ai: { raw: 0, weighted: 0 }, af: { raw: 0, weighted: 0 }, eja: { raw: 0, weighted: 0 }, especial: { raw: 0, weighted: 0 }
+    });
+
+    const totalMatriculasPonderadasRede = Object.values(segmentTotals).reduce((acc, s) => acc + s.weighted, 0);
+
     const municipalRevenue = municipalSchools.reduce((acc, s: any) => {
       const m = s.matriculas || {};
       const vaaf = calcularVAAF(m, parametros);
@@ -145,23 +194,17 @@ export default function DashboardPage() {
       const mde = calcularMDE(s, parametros, totalMatriculasRede);
       const outros = calcularOutros(s, parametros, totalMatriculasRede);
       return {
-        vaaf: acc.vaaf + vaaf,
-        vaat: acc.vaat + vaat,
-        vaar: acc.vaar + vaar,
-        pnae: acc.pnae + pnae,
-        mde: acc.mde + mde,
-        outros: acc.outros + outros,
+        vaaf: acc.vaaf + vaaf, vaat: acc.vaat + vaat, vaar: acc.vaar + vaar, pnae: acc.pnae + pnae, mde: acc.mde + mde, outros: acc.outros + outros,
         total: acc.total + (vaaf + vaat + vaar + pnae + mde + outros)
       };
     }, { vaaf: 0, vaat: 0, vaar: 0, pnae: 0, mde: 0, outros: 0, total: 0 });
 
-    const currentTotalSaldo = schoolAnalyses.reduce((acc, s) => acc + s.saldo, 0);
+    const totalSecretariaExpenses = (allExpenses || []).filter((e: any) => e.schoolId === 'SECRETARIA').reduce((acc, e: any) => acc + (e.value || 0), 0);
+    const currentTotalSaldo = schoolAnalyses.reduce((acc, s) => acc + s.saldo, 0) - totalSecretariaExpenses;
     const currentDeficitCount = schoolAnalyses.filter(s => s.status === 'deficit').length;
     const currentAvgCusto = schoolAnalyses.length > 0 ? schoolAnalyses.reduce((acc, s) => acc + s.custoAluno, 0) / schoolAnalyses.length : 0;
     const currentTotalReceita = schoolAnalyses.reduce((acc, s) => acc + s.receitaTotal, 0);
-
     const percETI = totalMatriculasRede > 0 ? (totalETIRede / totalMatriculasRede) * 100 : 0;
-    
     const schoolsWithEtiCount = municipalSchools.filter(s => (s.total_eti || 0) > 0).length;
     const percSchoolsWithEti = municipalSchools.length > 0 ? (schoolsWithEtiCount / municipalSchools.length) * 100 : 0;
 
@@ -169,11 +212,18 @@ export default function DashboardPage() {
 
     const technicalInsights = [
       {
-        title: "Meta PNE (Tempo Integral)",
+        title: "Meta PNE (Matrículas)",
         value: `${percETI.toFixed(1)}%`,
-        status: percETI >= 25 ? "Conforme" : "Abaixo da Meta",
-        description: percETI >= 25 ? "Rede atende a Meta 6 do PNE (mínimo 25%)." : "Necessário expandir matrículas ETI para atingir 25%.",
-        variant: percETI >= 25 ? "success" : "warning"
+        status: percETI >= 40 ? "Conforme" : "Abaixo da Meta",
+        description: percETI >= 40 ? "Rede atende a Meta 6 (mínimo 40% das matrículas em tempo integral)." : "Necessário expandir matrículas ETI para atingir a meta de 40%.",
+        variant: percETI >= 40 ? "success" : "warning"
+      },
+      {
+        title: "Meta PNE (Escolas)",
+        value: `${percSchoolsWithEti.toFixed(1)}%`,
+        status: percSchoolsWithEti >= 55 ? "Conforme" : "Abaixo da Meta",
+        description: percSchoolsWithEti >= 55 ? "Rede atende a meta de 55% das escolas com tempo integral." : "Necessário ampliar a oferta para atingir 55% das unidades.",
+        variant: percSchoolsWithEti >= 55 ? "success" : "warning"
       },
       {
         title: "Sustentabilidade Operacional",
@@ -181,13 +231,6 @@ export default function DashboardPage() {
         status: !hasExpenses ? "Sem Lançamentos" : (currentTotalSaldo >= 0 ? "Equilibrado" : "Alerta Fiscal"),
         description: !hasExpenses ? "Lance as despesas em 'Gestão de Despesas' para análise." : (currentTotalSaldo >= 0 ? "A receita municipal cobre os custos projetados." : "A rede opera acima da capacidade de repasse atual."),
         variant: !hasExpenses ? "info" : (currentTotalSaldo >= 0 ? "success" : "destructive")
-      },
-      {
-        title: "Fator VAAf/Integral",
-        value: `${parametros.fatores.C1.toFixed(2)}x`,
-        status: "Referência 2026",
-        description: `Peso multiplicador do FUNDEB para matrículas em ETI sobre o valor base.`,
-        variant: "info"
       }
     ];
 
@@ -195,6 +238,8 @@ export default function DashboardPage() {
       analysis: schoolAnalyses,
       stats: {
         totalMatriculasRede,
+        totalMatriculasPonderadasRede,
+        segmentTotals,
         totalETIRede,
         percentualETI: percETI,
         totalSaldo: currentTotalSaldo,
@@ -204,12 +249,39 @@ export default function DashboardPage() {
         hasExpenses,
         schoolsWithEtiCount,
         percSchoolsWithEti,
-        totalSchools: municipalSchools.length
+        totalSchools: municipalSchools.length,
+        totalSecretariaExpenses
       },
       networkTotals: municipalRevenue,
       nativeInsights: technicalInsights
     };
   }, [schools, allExpenses, parametros, filterLocalizacao, filterDependencia, filterETI]);
+
+  const sortedAnalysis = useMemo(() => {
+    let items = [...analysis];
+    if (sortConfig) {
+      items.sort((a: any, b: any) => {
+        const valA = a[sortConfig.key];
+        const valB = b[sortConfig.key];
+        
+        if (typeof valA === 'string') {
+          return sortConfig.direction === 'asc' 
+            ? valA.localeCompare(valB)
+            : valB.localeCompare(valA);
+        }
+        
+        return sortConfig.direction === 'asc' ? valA - valB : valB - valA;
+      });
+    }
+    return items;
+  }, [analysis, sortConfig]);
+
+  const toggleSort = (key: string) => {
+    setSortConfig(current => ({
+      key,
+      direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
 
   const handleGenerateReport = async () => {
     if (!stats || !networkTotals) {
@@ -234,9 +306,13 @@ export default function DashboardPage() {
         custoAlunoMedio: Math.round(stats.avgCusto),
         receitaAlunoMedio: Math.round(stats.receitaAlunoMedio),
         saldoTotalRede: Math.round(stats.totalSaldo),
+        despesaSecretaria: Math.round(stats.totalSecretariaExpenses),
         saldoStatus: stats.totalSaldo >= 0 ? "superávit" : "déficit",
         escolasEmDeficit: stats.deficitCount,
         totalEscolas: stats.totalSchools,
+        percentualEscolasETI: Math.round(stats.percSchoolsWithEti),
+        metaMatriculasPNE: "40%",
+        metaEscolasPNE: "55%",
         escolasETIlt20Percent: analysis.filter(s => (s.percentual_eti || 0) < 20).length,
         composicaoReceitas: {
           fundebVaaf: { amount: Math.round(networkTotals.vaaf), percentage: Math.round((networkTotals.vaaf / totalRevenue) * 100) },
@@ -368,13 +444,32 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        <KPICard title="Matrículas Municipais" value={mounted ? (stats?.totalMatriculasRede ?? 0).toLocaleString('pt-BR') : "0"} icon={Users} subtitle="Rede direta" />
-        <KPICard title="Alunos em ETI" value={`${(stats?.percentualETI ?? 0).toFixed(1)}%`} icon={GraduationCap} subtitle={`${stats?.totalETIRede ?? 0} alunos integrais`} />
-        <KPICard title="Cobertura ETI (Escolas)" value={`${(stats?.percSchoolsWithEti ?? 0).toFixed(1)}%`} icon={Building2} subtitle={`${stats?.schoolsWithEtiCount ?? 0} de ${stats?.totalSchools ?? 0} unidades`} />
-        <KPICard title="Saldo Estimado" value={`R$ ${mounted ? ((stats?.totalSaldo ?? 0) / 1000).toFixed(1) : "0"}k`} icon={DollarSign} subtitle={stats?.hasExpenses ? ((stats?.totalSaldo ?? 0) >= 0 ? "Superávit" : "Déficit") : "Aguardando Despesas"} className={stats?.hasExpenses ? ((stats?.totalSaldo ?? 0) >= 0 ? "bg-green-50/50 border-green-200" : "bg-red-50/50 border-red-200") : "bg-muted/30 border-dashed"} />
-        <KPICard title="Unidades em Risco" value={stats?.deficitCount || 0} icon={AlertCircle} subtitle="Cenário de déficit" className={(stats?.deficitCount ?? 0) > 0 ? "bg-orange-50/50 border-orange-200" : ""} />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+        <KPICard title="Matrículas Reais" value={mounted ? (stats?.totalMatriculasRede ?? 0).toLocaleString('pt-BR') : "0"} icon={Users} subtitle="Alunos Físicos" />
+        <KPICard title="Matrículas Ponderadas" value={mounted ? Math.round(stats?.totalMatriculasPonderadasRede ?? 0).toLocaleString('pt-BR') : "0"} icon={Scale} subtitle="Peso p/ Repasse" />
+        <KPICard title="Alunos em ETI" value={`${(stats?.percentualETI ?? 0).toFixed(1)}%`} icon={GraduationCap} subtitle={`${stats?.totalETIRede ?? 0} integrais`} />
+        <KPICard title="Cobertura ETI" value={`${(stats?.percSchoolsWithEti ?? 0).toFixed(1)}%`} icon={Building2} subtitle={`${stats?.schoolsWithEtiCount ?? 0} escolas`} />
+        <KPICard title="Saldo Estimado" value={`R$ ${mounted ? ((stats?.totalSaldo ?? 0) / 1000).toFixed(1) : "0"}k`} icon={DollarSign} subtitle={stats?.hasExpenses ? ((stats?.totalSaldo ?? 0) >= 0 ? "Superávit" : "Déficit") : "Sem Despesas"} className={stats?.hasExpenses ? ((stats?.totalSaldo ?? 0) >= 0 ? "bg-green-50/50 border-green-200" : "bg-red-50/50 border-red-200") : "bg-muted/30 border-dashed"} />
+        <KPICard title="Unidades Risco" value={stats?.deficitCount || 0} icon={AlertCircle} subtitle="Déficit projetado" className={(stats?.deficitCount ?? 0) > 0 ? "bg-orange-50/50 border-orange-200" : ""} />
       </div>
+
+      <Card className="shadow-md border-primary/10">
+        <CardHeader className="pb-2">
+          <CardTitle className="font-headline text-lg flex items-center gap-2">
+            <Users className="h-5 w-5 text-primary" /> Detalhamento de Matrículas por Segmento
+          </CardTitle>
+          <CardDescription>Subtotais reais vs ponderados para cálculo do FUNDEB 2026</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <SegmentCard label="Infantil" raw={stats?.segmentTotals.infantil.raw} weighted={stats?.segmentTotals.infantil.weighted} color="bg-blue-500" />
+            <SegmentCard label="Fund. Anos Iniciais" raw={stats?.segmentTotals.ai.raw} weighted={stats?.segmentTotals.ai.weighted} color="bg-emerald-500" />
+            <SegmentCard label="Fund. Anos Finais" raw={stats?.segmentTotals.af.raw} weighted={stats?.segmentTotals.af.weighted} color="bg-indigo-500" />
+            <SegmentCard label="EJA" raw={stats?.segmentTotals.eja.raw} weighted={stats?.segmentTotals.eja.weighted} color="bg-amber-500" />
+            <SegmentCard label="Especial (AEE)" raw={stats?.segmentTotals.especial.raw} weighted={stats?.segmentTotals.especial.weighted} color="bg-rose-500" />
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
@@ -416,17 +511,52 @@ export default function DashboardPage() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/50">
-                    <TableHead>Escola</TableHead>
-                    <TableHead className="text-right">Receita/Aluno</TableHead>
-                    <TableHead className="text-right">Custo/Aluno</TableHead>
-                    <TableHead className="text-right">% ETI</TableHead>
-                    <TableHead>Situação</TableHead>
+                    <TableHead className="cursor-pointer hover:bg-muted/80 transition-colors" onClick={() => toggleSort('nome')}>
+                      <div className="flex items-center gap-2">
+                        Escola
+                        {sortConfig.key === 'nome' ? (
+                          sortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                        ) : <ArrowUpDown className="h-3 w-3 opacity-30" />}
+                      </div>
+                    </TableHead>
+                    <TableHead className="text-right cursor-pointer hover:bg-muted/80 transition-colors" onClick={() => toggleSort('receitaAluno')}>
+                      <div className="flex items-center justify-end gap-2">
+                        Receita/Aluno
+                        {sortConfig.key === 'receitaAluno' ? (
+                          sortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                        ) : <ArrowUpDown className="h-3 w-3 opacity-30" />}
+                      </div>
+                    </TableHead>
+                    <TableHead className="text-right cursor-pointer hover:bg-muted/80 transition-colors" onClick={() => toggleSort('custoAluno')}>
+                      <div className="flex items-center justify-end gap-2">
+                        Custo/Aluno
+                        {sortConfig.key === 'custoAluno' ? (
+                          sortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                        ) : <ArrowUpDown className="h-3 w-3 opacity-30" />}
+                      </div>
+                    </TableHead>
+                    <TableHead className="text-right cursor-pointer hover:bg-muted/80 transition-colors" onClick={() => toggleSort('percentual_eti')}>
+                      <div className="flex items-center justify-end gap-2">
+                        % ETI
+                        {sortConfig.key === 'percentual_eti' ? (
+                          sortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                        ) : <ArrowUpDown className="h-3 w-3 opacity-30" />}
+                      </div>
+                    </TableHead>
+                    <TableHead className="cursor-pointer hover:bg-muted/80 transition-colors" onClick={() => toggleSort('status')}>
+                      <div className="flex items-center gap-2">
+                        Situação
+                        {sortConfig.key === 'status' ? (
+                          sortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+                        ) : <ArrowUpDown className="h-3 w-3 opacity-30" />}
+                      </div>
+                    </TableHead>
                     <TableHead className="text-center">Auditoria</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {analysis.length > 0 ? (
-                    analysis.map((school) => (
+                  {sortedAnalysis.length > 0 ? (
+                    sortedAnalysis.map((school) => (
                       <TableRow key={school.id} className="hover:bg-muted/30 text-xs">
                         <TableCell>
                           <div className="font-medium text-sm">{school.nome}</div>
@@ -595,6 +725,25 @@ export default function DashboardPage() {
             )}
           </CardContent>
         </Card>
+      </div>
+    </div>
+  );
+}
+
+function SegmentCard({ label, raw, weighted, color }: { label: string, raw?: number, weighted?: number, color: string }) {
+  return (
+    <div className="p-4 rounded-xl border bg-white shadow-sm space-y-3 relative overflow-hidden group hover:border-primary/30 transition-all">
+      <div className={`absolute top-0 left-0 w-1 h-full ${color}`} />
+      <div className="space-y-1">
+        <p className="text-[10px] font-bold uppercase text-muted-foreground">{label}</p>
+        <div className="flex items-baseline gap-2">
+          <span className="text-2xl font-bold text-slate-800">{(raw || 0).toLocaleString('pt-BR')}</span>
+          <span className="text-[10px] text-muted-foreground font-medium">Alunos</span>
+        </div>
+      </div>
+      <div className="pt-2 border-t flex justify-between items-center">
+        <span className="text-[10px] text-muted-foreground font-medium uppercase">Ponderado:</span>
+        <span className="text-xs font-bold text-slate-700">{(weighted || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}</span>
       </div>
     </div>
   );

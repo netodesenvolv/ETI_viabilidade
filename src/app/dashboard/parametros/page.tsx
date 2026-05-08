@@ -204,7 +204,7 @@ export default function ParametrosPage() {
         <TabsList className="bg-white p-1 border shadow-sm w-full md:w-auto overflow-x-auto justify-start">
           <TabsTrigger value="fundeb">FUNDEB VAAF/VAAT</TabsTrigger>
           <TabsTrigger value="pnae">PNAE / PNATE</TabsTrigger>
-          <TabsTrigger value="mde">MDE / Outros</TabsTrigger>
+          <TabsTrigger value="mde">MDE e QSE</TabsTrigger>
         </TabsList>
 
         <TabsContent value="fundeb">
@@ -349,7 +349,7 @@ export default function ParametrosPage() {
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label>MDE Líquido para ETI (Anual R$)</Label>
+                  <Label>Valor Bruto MDE (Anual R$)</Label>
                   <MoneyInput 
                     value={localParams.mde_liquido_eti}
                     onChange={(val: number) => setLocalParams(prev => ({ ...prev, mde_liquido_eti: val }))}
