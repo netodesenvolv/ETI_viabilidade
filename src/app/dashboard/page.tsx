@@ -26,8 +26,10 @@ import {
   PieChart,
   ArrowUpDown,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  Download
 } from "lucide-react";
+import * as XLSX from "xlsx";
 import { DEFAULT_PARAMETERS } from "@/lib/constants";
 import { calcularVAAF, calcularVAAT, calcularVAAR, calcularPNAE, calcularMDE, calcularOutros } from "@/lib/calculations";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -49,6 +51,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const DEPENDENCIA_LABELS: Record<string, string> = {
   "1": "Federal",
@@ -363,6 +371,110 @@ export default function DashboardPage() {
     toast({ title: "Download iniciado", description: "Arquivo de parecer técnico exportado." });
   };
 
+  const handleExportSchoolXLSX = (school: any) => {
+    const wb = XLSX.utils.book_new();
+    
+    const resumoData = [
+      ["Auditoria de Viabilidade", school.nome],
+      ["Município", activeMunicipioName],
+      ["UF", activeUF],
+      ["Exercício", "2026"],
+      [],
+      ["RESUMO FINANCEIRO"],
+      ["Receita Total Anual", school.receitaTotal],
+      ["Custo Total Anual", school.despesaTotal],
+      ["Saldo Estimado", school.saldo],
+      ["Índice de Cobertura", school.cobertura.toFixed(2) + "x"],
+      ["Custo/Aluno", school.custoAluno],
+      ["Receita/Aluno", school.receitaAluno],
+      ["Situação", school.status.toUpperCase()],
+      [],
+      ["MICRODADOS DE MATRÍCULAS (CENSO 2025)"],
+      ["Categoria", "Subcategoria", "Valor"],
+      ["Infantil", "Creche Integral", school.matriculas?.creche_integral || 0],
+      ["Infantil", "Creche Parcial", school.matriculas?.creche_parcial || 0],
+      ["Infantil", "Pré Integral", school.matriculas?.pre_integral || 0],
+      ["Infantil", "Pré Parcial", school.matriculas?.pre_parcial || 0],
+      ["Fundamental", "AI Integral", school.matriculas?.ef_ai_integral || 0],
+      ["Fundamental", "AI Parcial", school.matriculas?.ef_ai_parcial || 0],
+      ["Fundamental", "AF Integral", school.matriculas?.ef_af_integral || 0],
+      ["Fundamental", "AF Parcial", school.matriculas?.ef_af_parcial || 0],
+      ["EJA", "Fundamental", school.matriculas?.eja_fundamental || 0],
+      ["Especial", "AEE Inclusão", school.matriculas?.especial_aee || 0],
+    ];
+    const wsResumo = XLSX.utils.aoa_to_sheet(resumoData);
+    XLSX.utils.book_append_sheet(wb, wsResumo, "Resumo e Matrículas");
+
+    const receitasData = [
+      ["COMPOSIÇÃO DE RECEITAS"],
+      ["Fonte", "Valor (R$)"],
+      ["FUNDEB VAAf", school.vaaf],
+      ["Complementação VAAT", school.vaat],
+      ["Complementação VAAR", school.vaar],
+      ["PNAE Alimentação", school.pnae],
+      ["MDE / Recursos Próprios", school.mde],
+      ["Outros Repasses (QSE/PDDE)", school.outros],
+      ["TOTAL", school.receitaTotal]
+    ];
+    const wsReceitas = XLSX.utils.aoa_to_sheet(receitasData);
+    XLSX.utils.book_append_sheet(wb, wsReceitas, "Receitas");
+
+    const despesasData = [
+      ["DETALHAMENTO DE DESPESAS REAIS"],
+      ["Categoria", "Valor (R$)"],
+      ...(school.expensesDetail || []).map((exp: any) => [exp.category, exp.value]),
+      ["TOTAL", school.despesaTotal]
+    ];
+    const wsDespesas = XLSX.utils.aoa_to_sheet(despesasData);
+    XLSX.utils.book_append_sheet(wb, wsDespesas, "Despesas");
+
+    XLSX.writeFile(wb, `auditoria_${school.nome.replace(/\s+/g, '_')}_2026.xlsx`);
+    toast({ title: "Exportação Concluída", description: `Dados de ${school.nome} exportados para Excel.` });
+  };
+
+  const handleExportFullNetworkXLSX = () => {
+    if (!analysis || analysis.length === 0) return;
+
+    const wb = XLSX.utils.book_new();
+    
+    const schoolRows = analysis.map((s: any) => ({
+      "Escola": s.nome,
+      "Localização": String(s.localizacao).toUpperCase(),
+      "Dependência": DEPENDENCIA_LABELS[String(s.tp_dependencia)] || s.tp_dependencia,
+      "Total Matrículas": s.total_matriculas || 0,
+      "Matrículas ETI": s.total_eti || 0,
+      "% ETI": (s.percentual_eti || 0).toFixed(1) + "%",
+      "Receita Total": s.receitaTotal,
+      "Custo Total": s.despesaTotal,
+      "Saldo": s.saldo,
+      "Cobertura": s.cobertura.toFixed(2) + "x",
+      "Custo/Aluno": s.custoAluno,
+      "Receita/Aluno": s.receitaAluno,
+      "Situação": s.status.toUpperCase()
+    }));
+    
+    const wsSchools = XLSX.utils.json_to_sheet(schoolRows);
+    XLSX.utils.book_append_sheet(wb, wsSchools, "Diagnóstico Escolas");
+
+    const networkRows = [
+      ["Indicador", "Valor"],
+      ["Município", activeMunicipioName],
+      ["UF", activeUF],
+      ["Total Matrículas Rede", stats?.totalMatriculasRede || 0],
+      ["Total Matrículas Ponderadas", stats?.totalMatriculasPonderadasRede || 0],
+      ["Percentual ETI Rede", (stats?.percentualETI || 0).toFixed(1) + "%"],
+      ["Saldo Consolidado", stats?.totalSaldo || 0],
+      ["Escolas em Déficit", stats?.deficitCount || 0],
+      ["Custo Aluno Médio", stats?.avgCusto || 0],
+      ["Receita Aluno Média", stats?.receitaAlunoMedio || 0],
+    ];
+    const wsNetwork = XLSX.utils.aoa_to_sheet(networkRows);
+    XLSX.utils.book_append_sheet(wb, wsNetwork, "Resumo da Rede");
+
+    XLSX.writeFile(wb, `diagnostico_eti_${activeMunicipioName.replace(/\s+/g, '_')}_2026.xlsx`);
+    toast({ title: "Exportação Concluída", description: "Diagnóstico completo da rede exportado." });
+  };
+
   if (profileLoading || schoolsLoading) {
     return (
       <div className="h-[60vh] flex flex-col items-center justify-center gap-4">
@@ -424,6 +536,19 @@ export default function DashboardPage() {
               </SelectContent>
             </Select>
           </div>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2 bg-white hover:bg-slate-50 border shadow-sm">
+                <Download className="h-4 w-4 text-muted-foreground" /> Exportar Rede
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={handleExportFullNetworkXLSX} className="cursor-pointer">
+                <FileDown className="h-4 w-4 mr-2" /> Exportar Diagnóstico (.xlsx)
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <Button onClick={handleGenerateReport} disabled={isGenerating || analysis.length === 0} size="sm" className="gap-2 bg-accent hover:bg-accent/90 shadow-md">
             {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
@@ -579,21 +704,43 @@ export default function DashboardPage() {
                                 <Eye className="h-4 w-4" />
                               </Button>
                             </DialogTrigger>
-                            <DialogContent className="max-w-2xl">
-                              <DialogHeader>
-                                <DialogTitle>Auditoria de Viabilidade: {school.nome}</DialogTitle>
-                                <DialogDescription>Composição de Receitas e Despesas consolidadas no banco.</DialogDescription>
+                            <DialogContent className="max-w-3xl">
+                              <DialogHeader className="flex flex-row items-center justify-between border-b pb-4">
+                                <div className="space-y-1">
+                                  <DialogTitle>Auditoria de Viabilidade: {school.nome}</DialogTitle>
+                                  <DialogDescription>Composição de Receitas e Despesas consolidadas no banco.</DialogDescription>
+                                </div>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="outline" size="sm" className="gap-2 mr-6">
+                                      <Download className="h-4 w-4" /> Exportar
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={() => handleExportSchoolXLSX(school)} className="cursor-pointer">
+                                      <FileDown className="h-4 w-4 mr-2" /> Exportar para Excel (.xlsx)
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
                               </DialogHeader>
                               <ScrollArea className="max-h-[70vh] pr-4">
-                                <div className="space-y-6 py-4">
-                                  <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-6 py-6">
+                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                     <div className="p-4 bg-green-50 border border-green-100 rounded-xl">
                                       <p className="text-[10px] font-bold text-green-800 uppercase mb-1">Receita Total Anual</p>
-                                      <p className="text-xl font-bold text-green-900">R$ {school.receitaTotal.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</p>
+                                      <p className="text-lg font-bold text-green-900">R$ {school.receitaTotal.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</p>
                                     </div>
                                     <div className="p-4 bg-red-50 border border-red-100 rounded-xl">
                                       <p className="text-[10px] font-bold text-red-800 uppercase mb-1">Custo Total Anual</p>
-                                      <p className="text-xl font-bold text-red-900">R$ {school.despesaTotal.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</p>
+                                      <p className="text-lg font-bold text-red-900">R$ {school.despesaTotal.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</p>
+                                    </div>
+                                    <div className={`p-4 border rounded-xl ${school.saldo >= 0 ? 'bg-blue-50 border-blue-100' : 'bg-orange-50 border-orange-100'}`}>
+                                      <p className={`text-[10px] font-bold uppercase mb-1 ${school.saldo >= 0 ? 'text-blue-800' : 'text-orange-800'}`}>Saldo Estimado</p>
+                                      <p className={`text-lg font-bold ${school.saldo >= 0 ? 'text-blue-900' : 'text-orange-900'}`}>R$ {school.saldo.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</p>
+                                    </div>
+                                    <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl">
+                                      <p className="text-[10px] font-bold text-slate-800 uppercase mb-1">Índice Cobertura</p>
+                                      <p className="text-lg font-bold text-slate-900">{school.cobertura.toFixed(2)}x</p>
                                     </div>
                                   </div>
 
