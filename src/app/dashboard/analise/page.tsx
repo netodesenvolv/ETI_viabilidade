@@ -118,6 +118,17 @@ export default function AnaliseCustoAlunoPage() {
         else if (sustentabilidade < 95) status = 'deficit';
       }
 
+      const costsByCategory = schoolExpenses.reduce((acc: any, e: any) => {
+        const cat = e.category || "Não Categorizado";
+        acc[cat] = (acc[cat] || 0) + (e.value || 0);
+        return acc;
+      }, {});
+
+      const perStudentByCategory = Object.keys(costsByCategory).reduce((acc: any, cat: string) => {
+        acc[cat] = totalMatriculas > 0 ? costsByCategory[cat] / totalMatriculas : 0;
+        return acc;
+      }, {});
+
       return {
         id: school.id,
         name: school.nome,
@@ -130,6 +141,7 @@ export default function AnaliseCustoAlunoPage() {
         eti: school.percentual_eti || 0,
         sustentabilidade: Math.round(sustentabilidade),
         status,
+        costsByCategory: perStudentByCategory,
         raw: { vaaf, vaat, pnae, mde, outros, receitaTotal, totalDespesaReal }
       };
     });
@@ -188,7 +200,24 @@ export default function AnaliseCustoAlunoPage() {
   const handleExportCSV = () => {
     if (analysisData.length === 0) return;
     
-    const headers = ["INEP", "Escola", "Matrículas", "ETI %", "Receita/Aluno", "Custo/Aluno", "Saldo/Aluno", "Sustentabilidade", "Status"];
+    // Identificar todas as categorias únicas de despesa na rede
+    const allCategories = Array.from(new Set(
+      analysisData.flatMap(d => Object.keys(d.costsByCategory))
+    )).sort();
+
+    const headers = [
+      "INEP", 
+      "Escola", 
+      "Matrículas", 
+      "ETI %", 
+      "Receita/Aluno", 
+      "Custo/Aluno TOTAL", 
+      "Saldo/Aluno", 
+      ...allCategories.map(cat => `Custo/Aluno (${cat})`),
+      "Sustentabilidade", 
+      "Status"
+    ];
+
     const rows = analysisData.map(d => [
       d.inep,
       d.name,
@@ -197,19 +226,42 @@ export default function AnaliseCustoAlunoPage() {
       d.receita,
       d.custo,
       d.saldo,
+      ...allCategories.map(cat => Math.round(d.costsByCategory[cat] || 0)),
       `${d.sustentabilidade}%`,
       d.status.toUpperCase()
     ]);
 
-    const csvContent = "\uFEFF" + [headers.join(";"), ...rows.map(r => r.join(";"))].join("\n");
+    // Linha de "Máximos da Rede" para auditoria rápida
+    const maxRow = [
+      "MAX",
+      "VALOR MÁXIMO DA REDE",
+      "",
+      "",
+      Math.max(...analysisData.map(d => d.receita)),
+      Math.max(...analysisData.map(d => d.custo)),
+      "",
+      ...allCategories.map(cat => Math.round(Math.max(...analysisData.map(d => d.costsByCategory[cat] || 0)))),
+      "",
+      ""
+    ];
+
+    const csvContent = "\uFEFF" + [
+      headers.join(";"), 
+      maxRow.join(";"),
+      ...rows.map(r => r.join(";"))
+    ].join("\n");
+
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `analise_custo_aluno_${profile?.municipio}_2026.csv`;
+    link.download = `auditoria_custo_aluno_${profile?.municipio}_2026.csv`;
     link.click();
     URL.revokeObjectURL(url);
-    toast({ title: "Exportação Concluída", description: "O relatório CSV foi gerado com sucesso." });
+    toast({ 
+      title: "Exportação de Auditoria Concluída", 
+      description: "O relatório detalhado com custos setorizados foi gerado." 
+    });
   };
 
   const handleGenerateAI = async () => {

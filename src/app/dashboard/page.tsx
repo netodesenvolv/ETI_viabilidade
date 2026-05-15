@@ -437,6 +437,7 @@ export default function DashboardPage() {
 
     const wb = XLSX.utils.book_new();
     
+    // 1. Diagnóstico por Unidade (Resumo)
     const schoolRows = analysis.map((s: any) => ({
       "Escola": s.nome,
       "Localização": String(s.localizacao).toUpperCase(),
@@ -456,6 +457,66 @@ export default function DashboardPage() {
     const wsSchools = XLSX.utils.json_to_sheet(schoolRows);
     XLSX.utils.book_append_sheet(wb, wsSchools, "Diagnóstico Escolas");
 
+    // 2. Matrículas Detalhadas
+    const matriculasRows = analysis.map((s: any) => ({
+      "Escola": s.nome,
+      "Creche Integral": s.matriculas?.creche_integral || 0,
+      "Creche Parcial": s.matriculas?.creche_parcial || 0,
+      "Creche Conv. Integral": s.matriculas?.creche_conveniada_int || 0,
+      "Creche Conv. Parcial": s.matriculas?.creche_conveniada_par || 0,
+      "Pré Integral": s.matriculas?.pre_integral || 0,
+      "Pré Parcial": s.matriculas?.pre_parcial || 0,
+      "Fund. AI Integral": s.matriculas?.ef_ai_integral || 0,
+      "Fund. AI Parcial": s.matriculas?.ef_ai_parcial || 0,
+      "Fund. AF Integral": s.matriculas?.ef_af_integral || 0,
+      "Fund. AF Parcial": s.matriculas?.ef_af_parcial || 0,
+      "EJA Fundamental": s.matriculas?.eja_fundamental || 0,
+      "EJA Médio": s.matriculas?.eja_medio || 0,
+      "Especial AEE": s.matriculas?.especial_aee || 0,
+      "TOTAL REAL": s.total_matriculas || 0,
+      "TOTAL ETI": s.total_eti || 0
+    }));
+
+    const wsMatriculas = XLSX.utils.json_to_sheet(matriculasRows);
+    XLSX.utils.book_append_sheet(wb, wsMatriculas, "Matrículas Detalhadas");
+
+    // 3. Receitas Detalhadas
+    const receitasRows = analysis.map((s: any) => ({
+      "Escola": s.nome,
+      "FUNDEB VAAf": s.vaaf,
+      "Compl. VAAT": s.vaat,
+      "Compl. VAAR": s.vaar,
+      "PNAE Alimentação": s.pnae,
+      "MDE/Próprios": s.mde,
+      "Outros (QSE/PDDE)": s.outros,
+      "TOTAL RECEITA": s.receitaTotal
+    }));
+
+    const wsReceitas = XLSX.utils.json_to_sheet(receitasRows);
+    XLSX.utils.book_append_sheet(wb, wsReceitas, "Receitas Detalhadas");
+
+    // 4. Despesas Detalhadas (Lista plana de todos os lançamentos)
+    const allDetailedExpenses: any[] = [];
+    analysis.forEach((s: any) => {
+      if (s.expensesDetail && s.expensesDetail.length > 0) {
+        s.expensesDetail.forEach((exp: any) => {
+          allDetailedExpenses.push({
+            "Escola": s.nome,
+            "Categoria": exp.category,
+            "Valor (R$)": exp.value,
+            "Data": exp.date || "",
+            "Descrição": exp.description || ""
+          });
+        });
+      }
+    });
+
+    if (allDetailedExpenses.length > 0) {
+      const wsDespesas = XLSX.utils.json_to_sheet(allDetailedExpenses);
+      XLSX.utils.book_append_sheet(wb, wsDespesas, "Despesas Detalhadas");
+    }
+
+    // 5. Resumo da Rede
     const networkRows = [
       ["Indicador", "Valor"],
       ["Município", activeMunicipioName],
@@ -471,8 +532,8 @@ export default function DashboardPage() {
     const wsNetwork = XLSX.utils.aoa_to_sheet(networkRows);
     XLSX.utils.book_append_sheet(wb, wsNetwork, "Resumo da Rede");
 
-    XLSX.writeFile(wb, `diagnostico_eti_${activeMunicipioName.replace(/\s+/g, '_')}_2026.xlsx`);
-    toast({ title: "Exportação Concluída", description: "Diagnóstico completo da rede exportado." });
+    XLSX.writeFile(wb, `diagnostico_completo_${activeMunicipioName.replace(/\s+/g, '_')}_2026.xlsx`);
+    toast({ title: "Exportação Concluída", description: "Diagnóstico detalhado da rede exportado." });
   };
 
   if (profileLoading || schoolsLoading) {
