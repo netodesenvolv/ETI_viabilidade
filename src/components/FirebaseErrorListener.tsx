@@ -17,6 +17,12 @@ export function FirebaseErrorListener() {
         timestamp: new Date().toISOString()
       });
 
+      // Ignora o erro para 'config/parameters' silenciosamente no UI
+      // Isso ocorre porque o documento pode não existir ainda e o fallback já existe no frontend.
+      if (error.path.endsWith('config/parameters') && error.operation === 'get') {
+        return;
+      }
+
       toast({
         title: "Restrição de Acesso",
         description: `Seu perfil atual não permite ${error.operation} em ${error.path}.`,
