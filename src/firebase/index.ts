@@ -11,7 +11,8 @@ import { firebaseConfig } from './config';
  */
 export function initializeFirebase() {
   const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-  const db = getFirestore(app);
+  const databaseId = process.env.NEXT_PUBLIC_FIREBASE_DATABASE_ID;
+  const db = databaseId ? getFirestore(app, databaseId) : getFirestore(app);
   const auth = getAuth(app);
 
   // PROTEÇÃO DE PRODUÇÃO: Conecta aos emuladores apenas se explicitamente configurado em DEV

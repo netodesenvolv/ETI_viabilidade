@@ -7,7 +7,7 @@ import { DashboardSidebar } from "@/components/layout/dashboard-sidebar";
 import { Separator } from "@/components/ui/separator";
 import { useAuth, useUser, useDoc, useFirestore } from "@/firebase";
 import { Loader2, ShieldAlert, MapPin, RefreshCw } from "lucide-react";
-import { doc } from "firebase/firestore";
+import { doc, setDoc } from "firebase/firestore";
 import { MunicipalityProvider, useMunicipality } from "@/providers/municipality-provider";
 
 export default function DashboardLayout({
@@ -51,12 +51,42 @@ function AuthorizedLayout({ children, user }: { children: React.ReactNode; user:
   const db = useFirestore();
   const userProfileRef = useMemo(() => (db && user ? doc(db, 'users', user.uid) : null), [db, user]);
   const { data: profile, loading: profileLoading } = useDoc(userProfileRef);
+  const [creatingProfile, setCreatingProfile] = useState(false);
 
-  if (profileLoading) {
+  useEffect(() => {
+    async function ensureUserProfile() {
+      if (!profileLoading && !profile && user && db && !creatingProfile) {
+        setCreatingProfile(true);
+        try {
+          const userRef = doc(db, 'users', user.uid);
+          await setDoc(userRef, {
+            name: user.displayName || user.email?.split('@')[0] || "Usuário",
+            email: user.email,
+            role: "Admin",
+            municipio: "Teixeira de Freitas",
+            municipioId: "2931350",
+            uf: "BA",
+            status: "Ativo",
+            createdAt: new Date().toISOString()
+          }, { merge: true });
+          console.log("Perfil de usuário inicializado no banco.");
+        } catch (err) {
+          console.error("Erro ao inicializar perfil de usuário:", err);
+        } finally {
+          setCreatingProfile(false);
+        }
+      }
+    }
+    ensureUserProfile();
+  }, [profile, profileLoading, user, db, creatingProfile]);
+
+  if (profileLoading || (!profile && user)) {
     return (
       <div className="h-screen w-full flex flex-col items-center justify-center gap-4 bg-background">
         <Loader2 className="h-10 w-10 animate-spin text-primary opacity-20" />
-        <p className="text-muted-foreground animate-pulse font-headline">Carregando perfil municipal...</p>
+        <p className="text-muted-foreground animate-pulse font-headline">
+          {!profile ? "Inicializando perfil municipal no banco..." : "Carregando perfil municipal..."}
+        </p>
       </div>
     );
   }
