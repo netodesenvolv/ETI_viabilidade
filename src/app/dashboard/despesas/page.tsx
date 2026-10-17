@@ -36,6 +36,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth, useFirestore, useUser, useDoc, useCollection } from "@/firebase";
 import { doc, setDoc, collection, getDocs, deleteDoc } from "firebase/firestore";
 import { errorEmitter } from '@/firebase/error-emitter';
+import { useMunicipality, useExercicioRefs } from "@/providers/municipality-provider";
 import { FirestorePermissionError } from '@/firebase/errors';
 import { Label } from "@/components/ui/label";
 import {
@@ -144,10 +145,12 @@ export default function DespesasPage() {
   const { user } = useUser(auth);
   const userProfileRef = useMemo(() => (db && user ? doc(db, 'users', user.uid) : null), [db, user]);
   const { data: profile, loading: profileLoading } = useDoc(userProfileRef);
-  const municipioId = profile?.municipioId;
+  const { activeMunicipioId, activeMunicipioName, exercicio, censoAno, statusExercicio } = useMunicipality();
+  const municipioId = activeMunicipioId || profile?.municipioId;
+  const exRefs = useExercicioRefs(municipioId);
 
   // Escolas do Município
-  const schoolsRef = useMemo(() => (db && municipioId ? collection(db, 'municipios', municipioId, 'schools') : null), [db, municipioId]);
+  const schoolsRef = exRefs.schoolsRef;
   const { data: allSchools, loading: schoolsLoading } = useCollection(schoolsRef);
 
   // FILTRO CENTRAL: Apenas escolas municipais para gestão de despesas
@@ -166,11 +169,17 @@ export default function DespesasPage() {
   const [filterCategory, setFilterCategory] = useState<string | null>(null);
 
   // Despesas já salvas no Banco de Dados
-  const expensesColRef = useMemo(() => (db && municipioId ? collection(db, 'municipios', municipioId, 'expenses') : null), [db, municipioId]);
+  const expensesColRef = exRefs.expensesRef;
   const { data: dbExpenses, loading: dbLoading } = useCollection(expensesColRef);
   
   // Sincronizar dados do banco para a sessão de edição (apenas no carregamento inicial)
   const [hasSynced, setHasSynced] = useState(false);
+
+  // Ao trocar de exercício, limpa a sessão e recarrega do banco do novo exercício
+  useEffect(() => {
+    setExpenses([]);
+    setHasSynced(false);
+  }, [exercicio, municipioId]);
 
   useEffect(() => {
     if (dbExpenses && dbExpenses.length > 0 && !hasSynced && !isImporting) {
@@ -211,7 +220,8 @@ export default function DespesasPage() {
     const cleanValue = newValue.replace(/\./g, '').replace(',', '.');
     const numericValue = parseFloat(cleanValue) || 0;
     
-    const expenseRef = doc(db, 'municipios', municipioId, 'expenses', expenseId);
+    if (!exRefs.expensesRef) return;
+    const expenseRef = doc(exRefs.expensesRef, expenseId);
     try {
       await setDoc(expenseRef, { 
         value: numericValue, 
@@ -291,7 +301,7 @@ export default function DespesasPage() {
   }, [schools, selectedSchool]);
 
   const handleSave = async () => {
-    if (!db || !municipioId) {
+    if (!db || !municipioId || !exRefs.expensesRef) {
       toast({
         title: "Erro de Contexto",
         description: "Município de atuação não identificado no seu perfil.",
@@ -319,14 +329,14 @@ export default function DespesasPage() {
         // ID determinístico: escola_categoria_ano
         // Substituímos caracteres especiais para garantir um ID de documento válido no Firestore
         const sanitizedCategory = entry.category.replace(/[\s/()]+/g, '_');
-        const expenseId = `${entry.schoolId}_${sanitizedCategory}_2026`;
-        const expenseRef = doc(db, 'municipios', municipioId, 'expenses', expenseId);
+        const expenseId = `${entry.schoolId}_${sanitizedCategory}_${exercicio}`;
+        const expenseRef = doc(exRefs.expensesRef!, expenseId);
         
         const data = {
           schoolId: entry.schoolId,
           category: entry.category,
           value: entry.value,
-          year: 2026,
+          year: exercicio,
           updatedAt: new Date().toISOString(),
           updatedBy: user?.email
         };
@@ -363,8 +373,8 @@ export default function DespesasPage() {
     setIsDeleting(true);
     
     try {
-      const expensesCol = collection(db, 'municipios', municipioId, 'expenses');
-      const snapshot = await getDocs(expensesCol);
+      if (!exRefs.expensesRef) return;
+      const snapshot = await getDocs(exRefs.expensesRef);
       
       if (snapshot.empty) {
         toast({ title: "Informação", description: "Não existem registros de despesas no banco de dados para este município." });
@@ -385,7 +395,7 @@ export default function DespesasPage() {
 
       toast({
         title: "Banco de Dados Limpo",
-        description: "Todos os registros de despesas foram removidos permanentemente.",
+        description: `Todos os registros de despesas do Exercício ${exercicio} foram removidos.`,
       });
     } catch (error) {
       toast({
@@ -485,7 +495,11 @@ export default function DespesasPage() {
         }
       }
 
-      setExpenses(prev => [...prev, ...newEntries]);
+      setExpenses(prev => {
+        const chave = (e: SchoolExpenseEntry) => `${e.schoolId}__${e.category}`;
+        const novos = new Map(newEntries.map(e => [chave(e), e]));
+        return [...prev.filter(e => !novos.has(chave(e))), ...novos.values()];
+      });
       setIsImporting(false);
       toast({ title: "Importação concluída", description: `${newEntries.length} lançamentos carregados na sessão.` });
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -540,7 +554,7 @@ export default function DespesasPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-headline font-bold text-primary">Gestão de Despesas</h2>
-          <p className="text-muted-foreground">Lançamentos anuais para a Rede Municipal de {profile?.municipio}</p>
+          <p className="text-muted-foreground">Lançamentos anuais da Rede Municipal de {activeMunicipioName || profile?.municipio} — Exercício {exercicio}{statusExercicio === "projecao" ? " (projeção)" : ""}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <input type="file" ref={fileInputRef} className="hidden" accept=".csv" onChange={handleImportCSV} />
@@ -1268,7 +1282,7 @@ export default function DespesasPage() {
                                   className="h-8 w-8 text-muted-foreground hover:text-destructive"
                                   onClick={async () => {
                                     if (confirm("Deseja realmente excluir este registro permanentemente?")) {
-                                      const expenseRef = doc(db!, 'municipios', municipioId!, 'expenses', exp.id);
+                                      const expenseRef = doc(exRefs.expensesRef!, exp.id);
                                       await deleteDoc(expenseRef);
                                       toast({ title: "Registro removido" });
                                     }

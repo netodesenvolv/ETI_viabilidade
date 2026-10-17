@@ -27,8 +27,9 @@ import {
   SelectValue 
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DEFAULT_PARAMETERS } from "@/lib/constants";
-import { calcularVAAF, calcularVAAT, calcularPNAE, calcularMDE, calcularOutros } from "@/lib/calculations";
+import { normalizarParametros } from "@/lib/constants";
+import { useMunicipality, useExercicioRefs } from "@/providers/municipality-provider";
+import { calcularVAAF, calcularVAAT, calcularPNAE, calcularMDE, calcularOutros, resolverParametros, etiConsiderado } from "@/lib/calculations";
 import { 
   Calculator, 
   TrendingUp, 
@@ -74,17 +75,19 @@ export default function AnaliseCustoAlunoPage() {
 
   const userProfileRef = useMemo(() => (db && user ? doc(db, 'users', user.uid) : null), [db, user]);
   const { data: profile, loading: profileLoading } = useDoc(userProfileRef);
-  const municipioId = profile?.municipioId;
+  const { activeMunicipioId, exercicio, censoAno, statusExercicio } = useMunicipality();
+  const municipioId = activeMunicipioId || profile?.municipioId;
+  const exRefs = useExercicioRefs(municipioId);
 
-  const schoolsRef = useMemo(() => (db && municipioId ? collection(db, 'municipios', municipioId, 'schools') : null), [db, municipioId]);
+  const schoolsRef = exRefs.schoolsRef;
   const { data: schools, loading: schoolsLoading } = useCollection(schoolsRef);
 
-  const expensesRef = useMemo(() => (db && municipioId ? collection(db, 'municipios', municipioId, 'expenses') : null), [db, municipioId]);
+  const expensesRef = exRefs.expensesRef;
   const { data: expenses } = useCollection(expensesRef);
 
-  const paramsRef = useMemo(() => (db && municipioId ? doc(db, 'municipios', municipioId, 'config', 'parameters') : null), [db, municipioId]);
+  const paramsRef = exRefs.paramsRef;
   const { data: customParams } = useDoc(paramsRef);
-  const parametros = (customParams as any) || DEFAULT_PARAMETERS;
+  const parametros = useMemo(() => resolverParametros(normalizarParametros(customParams), schools as any[]), [customParams, schools]);
 
   const analysisData = useMemo(() => {
     if (!schools) return [];
@@ -98,7 +101,7 @@ export default function AnaliseCustoAlunoPage() {
 
       const schoolMatriculas = school.matriculas || {};
 
-      const vaaf = calcularVAAF(schoolMatriculas, parametros);
+      const vaaf = calcularVAAF(schoolMatriculas, parametros, school.localizacao);
       const vaat = calcularVAAT(school, parametros, totalMatriculasRede);
       const pnae = calcularPNAE(schoolMatriculas, parametros);
       const mde = calcularMDE(school, parametros, totalMatriculasRede);
@@ -255,7 +258,7 @@ export default function AnaliseCustoAlunoPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `auditoria_custo_aluno_${profile?.municipio}_2026.csv`;
+    link.download = `auditoria_custo_aluno_${profile?.municipio}_${exercicio}.csv`;
     link.click();
     URL.revokeObjectURL(url);
     toast({ 
@@ -275,7 +278,7 @@ export default function AnaliseCustoAlunoPage() {
       const input = {
         municipio: profile?.municipio || "Município",
         uf: profile?.uf || "BA",
-        exercicio: 2026,
+        exercicio,
         totalMatriculas: networkStats.totalMatriculas,
         totalETI: networkStats.totalETI,
         percentualETI: Math.round((networkStats.totalETI / networkStats.totalMatriculas) * 100),

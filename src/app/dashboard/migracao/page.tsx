@@ -6,6 +6,7 @@ import { Loader2, Database, AlertTriangle, CheckCircle } from "lucide-react";
 import { useFirestore, useAuth, useUser } from "@/firebase";
 import { collection, getDocs, doc, setDoc, writeBatch } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
+import { Alert } from "@/components/ui/alert";
 
 export default function MigracaoPage() {
   const { toast } = useToast();

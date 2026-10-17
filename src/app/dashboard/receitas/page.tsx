@@ -19,8 +19,9 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { DEFAULT_PARAMETERS } from "@/lib/constants";
-import { calcularVAAF, calcularVAAT, calcularPNAE, calcularMDE, calcularOutros } from "@/lib/calculations";
+import { normalizarParametros } from "@/lib/constants";
+import { useMunicipality, useExercicioRefs } from "@/providers/municipality-provider";
+import { calcularVAAF, calcularVAAT, calcularPNAE, calcularMDE, calcularOutros, resolverParametros, etiConsiderado } from "@/lib/calculations";
 import { KPICard } from "@/components/dashboard/kpi-card";
 
 export default function ReceitasPage() {
@@ -30,14 +31,16 @@ export default function ReceitasPage() {
 
   const userProfileRef = useMemo(() => (db && user ? doc(db, 'users', user.uid) : null), [db, user]);
   const { data: profile, loading: profileLoading } = useDoc(userProfileRef);
-  const municipioId = profile?.municipioId;
+  const { activeMunicipioId, exercicio, censoAno, statusExercicio } = useMunicipality();
+  const municipioId = activeMunicipioId || profile?.municipioId;
+  const exRefs = useExercicioRefs(municipioId);
 
-  const schoolsRef = useMemo(() => (db && municipioId ? collection(db, 'municipios', municipioId, 'schools') : null), [db, municipioId]);
+  const schoolsRef = exRefs.schoolsRef;
   const { data: schools, loading: schoolsLoading } = useCollection(schoolsRef);
 
-  const paramsRef = useMemo(() => (db && municipioId ? doc(db, 'municipios', municipioId, 'config', 'parameters') : null), [db, municipioId]);
+  const paramsRef = exRefs.paramsRef;
   const { data: customParams } = useDoc(paramsRef);
-  const parametros = (customParams as any) || DEFAULT_PARAMETERS;
+  const parametros = useMemo(() => resolverParametros(normalizarParametros(customParams), schools as any[]), [customParams, schools]);
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'nome', direction: 'asc' });
 
   // FILTRO CENTRAL: Apenas escolas da rede municipal ('3')
@@ -52,7 +55,7 @@ export default function ReceitasPage() {
 
   const schoolRevenueData = useMemo(() => {
     return municipalSchools.map((school: any) => {
-      const vaaf = calcularVAAF(school.matriculas, parametros);
+      const vaaf = calcularVAAF(school.matriculas, parametros, school.localizacao);
       const vaat = calcularVAAT(school, parametros, totalMatriculasRede);
       const pnae = calcularPNAE(school.matriculas, parametros);
       const mde = calcularMDE(school, parametros, totalMatriculasRede);
@@ -140,7 +143,7 @@ export default function ReceitasPage() {
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-3xl font-headline font-bold text-primary">Mapa de Receitas: {profile?.municipio}</h2>
-          <p className="text-muted-foreground">Cruzamento: Microdados INEP × Parâmetros Financeiros 2026</p>
+          <p className="text-muted-foreground">Cruzamento: Microdados INEP × Parâmetros do Exercício {exercicio} (Censo {censoAno})</p>
         </div>
         <Badge variant="outline" className="py-1 gap-2 border-primary/20 bg-primary/5 text-primary">
           <ListFilter className="h-3 w-3" /> {municipalSchools.length} Unidades Municipais
@@ -201,7 +204,7 @@ export default function ReceitasPage() {
                     </TableHead>
                     <TableHead className="text-right cursor-pointer hover:bg-muted/80 transition-colors" onClick={() => toggleSort('mde')}>
                       <div className="flex items-center justify-end gap-2">
-                        MDE (R$)
+                        Próprios + royalties (R$)
                         {sortConfig.key === 'mde' ? (
                           sortConfig.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
                         ) : <ArrowUpDown className="h-3 w-3 opacity-30" />}
@@ -313,7 +316,7 @@ export default function ReceitasPage() {
           <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-xl flex gap-3 text-xs">
             <Info className="h-5 w-5 shrink-0 text-blue-600" />
             <div className="space-y-1 text-blue-800">
-              <p className="font-bold">Lógica de Repasse FUNDEB 2026</p>
+              <p className="font-bold">Lógica de Repasse FUNDEB {exercicio}</p>
               <p className="leading-relaxed">
                 As receitas acima são calculadas cruzando os parâmetros da aba <b>Configuração</b> com o número exato de alunos em cada modalidade. 
                 Escolas com maior percentual de Tempo Integral (ETI) geram proporcionalmente mais recursos de VAAf e PNAE para o tesouro municipal.

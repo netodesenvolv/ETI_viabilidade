@@ -9,6 +9,7 @@ import { useAuth, useUser, useDoc, useFirestore } from "@/firebase";
 import { Loader2, ShieldAlert, MapPin, RefreshCw } from "lucide-react";
 import { doc, setDoc } from "firebase/firestore";
 import { MunicipalityProvider, useMunicipality } from "@/providers/municipality-provider";
+import { ExercicioSelector } from "@/components/layout/exercicio-selector";
 
 export default function DashboardLayout({
   children,
@@ -106,7 +107,8 @@ function AuthorizedLayout({ children, user }: { children: React.ReactNode; user:
               <MunicipalityBadge />
             </div>
             <div className="flex items-center gap-4">
-              <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-primary/5 border border-primary/10 rounded-full">
+              <ExercicioSelector />
+              <div className="hidden lg:flex items-center gap-2 px-3 py-1 bg-primary/5 border border-primary/10 rounded-full">
                 <ShieldAlert className="h-3 w-3 text-primary" />
                 <span className="text-[10px] uppercase font-bold text-primary tracking-widest">Ambiente Autenticado</span>
               </div>

@@ -3,7 +3,8 @@ import type {NextConfig} from 'next';
 const nextConfig: NextConfig = {
   /* config options here */
   typescript: {
-    ignoreBuildErrors: true,
+    // Erros de tipo voltam a bloquear o build (antes ficavam escondidos e quebravam páginas em produção)
+    ignoreBuildErrors: false,
   },
   eslint: {
     ignoreDuringBuilds: true,

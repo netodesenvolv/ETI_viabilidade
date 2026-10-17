@@ -24,8 +24,9 @@ import {
 } from "lucide-react";
 import { useAuth, useFirestore, useUser, useDoc, useCollection } from "@/firebase";
 import { doc, collection } from "firebase/firestore";
-import { DEFAULT_PARAMETERS } from "@/lib/constants";
-import { calcularVAAF, calcularVAAT, calcularPNAE, calcularMDE, calcularOutros } from "@/lib/calculations";
+import { normalizarParametros } from "@/lib/constants";
+import { useMunicipality, useExercicioRefs } from "@/providers/municipality-provider";
+import { calcularVAAF, calcularVAAT, calcularPNAE, calcularMDE, calcularOutros, resolverParametros, etiConsiderado } from "@/lib/calculations";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
@@ -44,17 +45,19 @@ export default function AuditoriaCustosPage() {
 
   const userProfileRef = useMemo(() => (db && user ? doc(db, 'users', user.uid) : null), [db, user]);
   const { data: profile, loading: profileLoading } = useDoc(userProfileRef);
-  const municipioId = profile?.municipioId;
+  const { activeMunicipioId, exercicio, censoAno, statusExercicio } = useMunicipality();
+  const municipioId = activeMunicipioId || profile?.municipioId;
+  const exRefs = useExercicioRefs(municipioId);
 
-  const schoolsRef = useMemo(() => (db && municipioId ? collection(db, 'municipios', municipioId, 'schools') : null), [db, municipioId]);
+  const schoolsRef = exRefs.schoolsRef;
   const { data: schools, loading: schoolsLoading } = useCollection(schoolsRef);
 
-  const expensesRef = useMemo(() => (db && municipioId ? collection(db, 'municipios', municipioId, 'expenses') : null), [db, municipioId]);
+  const expensesRef = exRefs.expensesRef;
   const { data: expenses } = useCollection(expensesRef);
 
-  const paramsRef = useMemo(() => (db && municipioId ? doc(db, 'municipios', municipioId, 'config', 'parameters') : null), [db, municipioId]);
+  const paramsRef = exRefs.paramsRef;
   const { data: customParams } = useDoc(paramsRef);
-  const parametros = (customParams as any) || DEFAULT_PARAMETERS;
+  const parametros = useMemo(() => resolverParametros(normalizarParametros(customParams), schools as any[]), [customParams, schools]);
 
   const auditData = useMemo(() => {
     if (!schools || !expenses) return { rankings: [], categories: [], avgByCat: {} };
@@ -140,8 +143,8 @@ export default function AuditoriaCustosPage() {
       const input = {
         municipio: profile?.municipio || "Município",
         uf: profile?.uf || "BA",
-        exercicio: 2026,
-        avgTotalCost: Math.round(auditData.avgTotal),
+        exercicio,
+        avgTotalCost: Math.round(auditData.avgTotal || 0),
         topOutliers,
         networkAverages: Object.fromEntries(
           Object.entries(auditData.avgByCat).map(([k, v]) => [k, Math.round(v as number)])
@@ -179,7 +182,7 @@ export default function AuditoriaCustosPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-headline font-bold text-primary">Auditoria de Custos: {profile?.municipio}</h2>
-          <p className="text-muted-foreground">Ranking de indicadores de despesa por unidade (Censo 2026)</p>
+          <p className="text-muted-foreground">Ranking de indicadores de despesa por unidade (Exercício {exercicio} · Censo {censoAno})</p>
         </div>
         <Button 
           size="sm" 

@@ -19,7 +19,8 @@ import {
   MapPin,
   RefreshCw,
   Search,
-  Loader2
+  Loader2,
+  CalendarRange
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
@@ -53,10 +54,11 @@ import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Card } from "@/components/ui/card"
 
-const menuItems = [
+const baseMenuItems = [
   { title: "Painel Executivo", icon: LayoutDashboard, href: "/dashboard" },
   { title: "Estrategista ETI", icon: Sparkles, href: "/dashboard/estrategista" },
-  { title: "Parâmetros 2026", icon: Settings, href: "/dashboard/parametros" },
+  { title: "Exercícios", icon: CalendarRange, href: "/dashboard/exercicios" },
+  { title: "Parâmetros {year}", icon: Settings, href: "/dashboard/parametros" },
   { title: "Censo Escolar", icon: Database, href: "/dashboard/censo" },
   { title: "Mapa de Receitas", icon: CreditCard, href: "/dashboard/receitas" },
   { title: "Gestão de Despesas", icon: TrendingUp, href: "/dashboard/despesas" },
@@ -90,7 +92,7 @@ export function DashboardSidebar() {
   const db = useFirestore()
   const { user } = useUser(auth)
   const [mounted, setMounted] = React.useState(false)
-  const { activeMunicipioName, setMunicipio, isViewOnly } = useMunicipality()
+  const { activeMunicipioName, setMunicipio, isViewOnly, projectionYear } = useMunicipality()
 
   // Estados para troca de município (Admin)
   const [isSwitching, setIsSwitching] = React.useState(false)
@@ -98,6 +100,11 @@ export function DashboardSidebar() {
   const [cityResults, setCityResults] = React.useState<IBGECity[]>([])
   const [isSearchingCity, setIsSearchingCity] = React.useState(false)
   const [isDialogOpen, setIsOpen] = React.useState(false)
+
+  const menuItems = baseMenuItems.map(item => ({
+    ...item,
+    title: item.title.replace("{year}", projectionYear.toString())
+  }))
 
   React.useEffect(() => {
     setMounted(true)
@@ -197,7 +204,7 @@ export function DashboardSidebar() {
       <SidebarFooter className="p-4 space-y-2">
         <div className={`rounded-lg p-3 group-data-[collapsible=icon]:hidden border relative transition-colors ${isViewOnly ? 'bg-orange-500/10 border-orange-500/30' : 'bg-white/10 border-white/5'}`}>
           <p className="text-[10px] uppercase font-bold text-white/40 tracking-wider mb-1">
-            {isViewOnly ? "Modo de Supervisão" : "Exercício 2026"}
+            {isViewOnly ? `Supervisão · Exercício ${projectionYear}` : `Exercício ${projectionYear} · Censo ${projectionYear - 1}`}
           </p>
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 flex-1 overflow-hidden">

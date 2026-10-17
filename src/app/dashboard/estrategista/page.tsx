@@ -40,8 +40,11 @@ import { generateEtiStrategy } from "@/ai/flows/generate-eti-strategy";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { DEFAULT_PARAMETERS } from "@/lib/constants";
-import { calcularVAAF, calcularVAAT, calcularPNAE, calcularMDE, calcularOutros } from "@/lib/calculations";
+import { normalizarParametros } from "@/lib/constants";
+import { metasDosParametros, MARCOS } from "@/lib/metas-pne";
+import { useMunicipality, useExercicioRefs } from "@/providers/municipality-provider";
+import { calcularVAAF, calcularVAAT, calcularPNAE, calcularMDE, calcularOutros, resolverParametros, etiConsiderado } from "@/lib/calculations";
+import { pctETIRede, custoExtraPorAluno, minimo4Pct } from "@/lib/expansao";
 
 export default function EstrategistaPage() {
   const { toast } = useToast();
@@ -50,8 +53,8 @@ export default function EstrategistaPage() {
   const { user } = useUser(auth);
 
   // Estados do Formulário
-  const [metaPct, setMetaPct] = useState("25");
-  const [prazoAnos, setPrazoAnos] = useState("5");
+  const [metaPct, setMetaPct] = useState("35");
+  const [prazoAnos, setPrazoAnos] = useState("6");
   const [restricao, setRestricao] = useState("");
   const [prioridade, setPrioridade] = useState("Rede completa proporcional");
   const [observacoes, setObservacoes] = useState("");
@@ -65,17 +68,25 @@ export default function EstrategistaPage() {
   // Dados do Firestore
   const userProfileRef = useMemo(() => (db && user ? doc(db, 'users', user.uid) : null), [db, user]);
   const { data: profile, loading: profileLoading } = useDoc(userProfileRef);
-  const municipioId = profile?.municipioId;
+  const { activeMunicipioId, exercicio, censoAno, statusExercicio } = useMunicipality();
+  const municipioId = activeMunicipioId || profile?.municipioId;
+  const exRefs = useExercicioRefs(municipioId);
 
-  const schoolsRef = useMemo(() => (db && municipioId ? collection(db, 'municipios', municipioId, 'schools') : null), [db, municipioId]);
+  const schoolsRef = exRefs.schoolsRef;
   const { data: schools, loading: schoolsLoading } = useCollection(schoolsRef);
 
-  const expensesRef = useMemo(() => (db && municipioId ? collection(db, 'municipios', municipioId, 'expenses') : null), [db, municipioId]);
+  const expensesRef = exRefs.expensesRef;
   const { data: expenses } = useCollection(expensesRef);
 
-  const paramsRef = useMemo(() => (db && municipioId ? doc(db, 'municipios', municipioId, 'config', 'parameters') : null), [db, municipioId]);
+  const paramsRef = exRefs.paramsRef;
   const { data: customParams } = useDoc(paramsRef);
-  const parametros = (customParams as any) || DEFAULT_PARAMETERS;
+  const parametros = useMemo(() => resolverParametros(normalizarParametros(customParams), schools as any[]), [customParams, schools]);
+  const metas = useMemo(() => metasDosParametros(parametros), [parametros]);
+  // Prazo em anos até o Censo do marco (o exercício N usa o Censo N-1)
+  const usarMarco = (chave: "m2031" | "m2036", ano: number) => {
+    setMetaPct(String(metas[chave].matriculas));
+    setPrazoAnos(String(Math.max(1, ano - censoAno)));
+  };
 
   // Histórico de Estratégias
   const strategiesRef = useMemo(() => (db && municipioId ? collection(db, 'municipios', municipioId, 'strategies') : null), [db, municipioId]);
@@ -88,13 +99,13 @@ export default function EstrategistaPage() {
 
     const municipalSchools = schools.filter(s => String(s.tp_dependencia) === '3');
     const totalMatriculas = municipalSchools.reduce((acc, s: any) => acc + (s.total_matriculas || 0), 0);
-    const totalETI = municipalSchools.reduce((acc, s: any) => acc + (s.total_eti || 0), 0);
-    const pctETI = totalMatriculas > 0 ? (totalETI / totalMatriculas) * 100 : 0;
+    // Percentual no critério do PNE/MEC: sem EJA no denominador
+    const { base: baseMeta, eti: totalETI, pct: pctETI } = pctETIRede(municipalSchools);
 
     let totalVaaf = 0;
     let totalReceita = 0;
     municipalSchools.forEach((s: any) => {
-      const vaaf = calcularVAAF(s.matriculas, parametros);
+      const vaaf = calcularVAAF(s.matriculas, parametros, s.localizacao);
       const vaat = calcularVAAT(s, parametros, totalMatriculas);
       const pnae = calcularPNAE(s.matriculas, parametros);
       const mde = calcularMDE(s, parametros, totalMatriculas);
@@ -108,6 +119,7 @@ export default function EstrategistaPage() {
 
     return {
       totalMatriculas,
+      baseMeta,
       totalETI,
       pctETI,
       vaaf: totalVaaf,
@@ -127,9 +139,9 @@ export default function EstrategistaPage() {
       const input = {
         municipio: profile.municipio,
         uf: profile.uf || "BA",
-        totalMatriculas: networkContext.totalMatriculas,
+        totalMatriculas: networkContext.baseMeta,
         totalETI: networkContext.totalETI,
-        pctETI: Math.round(networkContext.pctETI),
+        pctETI: Math.round(networkContext.pctETI * 10) / 10,
         vaaf: Math.round(networkContext.vaaf),
         receitaTotal: Math.round(networkContext.receitaTotal),
         despesaTotal: Math.round(networkContext.despesaTotal),
@@ -140,6 +152,9 @@ export default function EstrategistaPage() {
         prioridade,
         restricao: restricao || undefined,
         observacoes: observacoes || undefined,
+        custoExtraAlunoEF: Math.round(custoExtraPorAluno('ef_ai', parametros)),
+        custoExtraAlunoEI: Math.round(custoExtraPorAluno('creche', parametros)),
+        minimo4Pct: Math.round(minimo4Pct(parametros).minimo),
       };
 
       const result = await generateEtiStrategy(input);
@@ -157,6 +172,7 @@ export default function EstrategistaPage() {
     setIsSaving(true);
     try {
       await addDoc(collection(db, 'municipios', municipioId, 'strategies'), {
+        exercicio,
         metaDesejada: Number(metaPct),
         prazoAnos: Number(prazoAnos),
         prioridade,
@@ -223,18 +239,22 @@ export default function EstrategistaPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <ContextItem label="Alunos" value={networkContext?.totalMatriculas.toLocaleString('pt-BR')} />
+                <ContextItem label="Alunos (sem EJA)" value={networkContext?.baseMeta.toLocaleString('pt-BR')} />
                 <ContextItem label="% ETI Atual" value={`${networkContext?.pctETI.toFixed(1)}%`} />
               </div>
               <Separator />
               <div className="space-y-2">
-                 <div className="flex justify-between text-[10px] font-bold text-muted-foreground uppercase">
-                    <span>Meta PNE 6</span>
-                    <span className="text-primary">25% (2024)</span>
-                 </div>
-                 <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-                    <div className="h-full bg-primary" style={{ width: `${Math.min(100, (networkContext?.pctETI || 0) / 0.25)}%` }} />
-                 </div>
+                 {MARCOS.map(({ chave, ano }) => (
+                   <div key={chave} className="space-y-1">
+                     <div className="flex justify-between text-[10px] font-bold text-muted-foreground uppercase">
+                        <span>Meta {ano} (estudantes)</span>
+                        <span className="text-primary">{metas[chave].matriculas}% · escolas {metas[chave].escolas}%</span>
+                     </div>
+                     <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                        <div className="h-full bg-primary" style={{ width: `${Math.min(100, ((networkContext?.pctETI || 0) / (metas[chave].matriculas || 1)) * 100)}%` }} />
+                     </div>
+                   </div>
+                 ))}
               </div>
               <Separator />
               <div className="space-y-2">
@@ -259,7 +279,14 @@ export default function EstrategistaPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label className="text-xs">Meta de ETI Desejada (%)</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="text-xs">Meta de ETI Desejada (%)</Label>
+                  <div className="flex gap-1">
+                    {MARCOS.map(({ chave, ano }) => (
+                      <Button key={chave} type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px]" onClick={() => usarMarco(chave, ano)}>Meta {ano}</Button>
+                    ))}
+                  </div>
+                </div>
                 <div className="relative">
                   <Target className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input type="number" className="pl-9" value={metaPct} onChange={e => setMetaPct(e.target.value)} />
@@ -287,6 +314,17 @@ export default function EstrategistaPage() {
                     <SelectItem value="Rede completa proporcional">Rede completa proporcional</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs">Restrição orçamentária anual (R$)</Label>
+                <Input
+                  inputMode="decimal"
+                  placeholder="Ex.: 7.000.000 (deixe vazio se não houver)"
+                  value={restricao}
+                  onChange={e => setRestricao(e.target.value.replace(/[^\d.,]/g, ''))}
+                />
+                <p className="text-[10px] text-muted-foreground">Quanto a rede pode gastar a mais por ano com a expansão. Referência: mínimo de 4% do FUNDEB = R$ {Math.round(minimo4Pct(parametros).minimo).toLocaleString('pt-BR')}.</p>
               </div>
 
               <div className="space-y-2">
@@ -335,7 +373,7 @@ export default function EstrategistaPage() {
                   <div className="space-y-2">
                     <h3 className="text-lg font-bold">Processando Consultoria...</h3>
                     <p className="text-muted-foreground text-xs max-w-xs mx-auto">
-                      A IA está cruzando o VAAf 2026 com os microdados do Censo para projetar sua expansão fiscal.
+                      A IA está cruzando o FUNDEB {exercicio} com os microdados do Censo para projetar sua expansão fiscal.
                     </p>
                   </div>
                 </div>

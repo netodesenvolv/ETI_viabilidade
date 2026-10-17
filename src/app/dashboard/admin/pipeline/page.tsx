@@ -20,6 +20,8 @@ import {
   AlertTriangle
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useMunicipality } from "@/providers/municipality-provider";
+import { refsExercicio } from "@/lib/exercicio";
 import { Badge } from "@/components/ui/badge";
 import { useAuth, useFirestore, useUser, useDoc } from "@/firebase";
 import { doc, writeBatch, collection, getDocs, deleteDoc } from "firebase/firestore";
@@ -64,6 +66,7 @@ export default function PipelineImportadorPage() {
   const auth = useAuth();
   const db = useFirestore();
   const { user } = useUser(auth);
+  const { exercicio, censoAno } = useMunicipality();
   const { data: profile } = useDoc(useMemo(() => (db && user ? doc(db, 'users', user.uid) : null), [db, user]));
 
   const parseCSV = (text: string) => {
@@ -86,7 +89,7 @@ export default function PipelineImportadorPage() {
     }
     setCleaning(true);
     try {
-      const schoolsCol = collection(db, 'municipios', targetMunicipioId, 'schools');
+      const schoolsCol = refsExercicio(db, targetMunicipioId, exercicio).schools;
       const snapshot = await getDocs(schoolsCol);
       let count = 0;
       
@@ -172,9 +175,11 @@ export default function PipelineImportadorPage() {
       for (const [mId, schools] of allEntries) {
         for (let i = 0; i < schools.length; i += 400) {
           const batch = writeBatch(db);
+          const r = refsExercicio(db, mId, exercicio);
+          if (i === 0) batch.set(r.meta, { ano: exercicio, censoAno, status: exercicio > new Date().getFullYear() ? 'projecao' : 'realizado', origem: 'pipeline', criadoEm: new Date().toISOString() }, { merge: true });
           schools.slice(i, i + 400).forEach(s => {
-            const sRef = doc(db, 'municipios', mId, 'schools', s.codigo_inep);
-            batch.set(sRef, s); // SEM MERGE para limpar lixo de campos antigos
+            const sRef = doc(r.schools, s.codigo_inep);
+            batch.set(sRef, { ...s, censoAno }); // SEM MERGE para limpar lixo de campos antigos (o ETI verificado deve ser lançado depois)
           });
           await batch.commit();
           await delay(150);
@@ -184,7 +189,7 @@ export default function PipelineImportadorPage() {
         setProgress(Math.floor((processedCities / allEntries.length) * 100));
         setStatus(`Gravando municípios... ${processedCities} de ${allEntries.length}`);
       }
-      toast({ title: "Pipeline Concluído", description: "Base nacional 2025 atualizada com sucesso." });
+      toast({ title: "Pipeline Concluído", description: `Censo ${censoAno} gravado no Exercício ${exercicio}.` });
     } catch (err: any) {
       toast({ title: "Erro no Pipeline", description: err.message, variant: "destructive" });
     } finally {
@@ -206,7 +211,7 @@ export default function PipelineImportadorPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-headline font-bold text-primary">Importador Nacional</h2>
-          <p className="text-muted-foreground">Distribuição centralizada de microdados 2025</p>
+          <p className="text-muted-foreground">Distribuição centralizada de microdados — Censo {censoAno} → Exercício {exercicio}</p>
         </div>
         <Badge className="bg-green-600 py-1 px-3 gap-1.5"><Zap className="h-3.5 w-3.5" /> Modo Blaze Ativo</Badge>
       </div>
@@ -233,7 +238,7 @@ export default function PipelineImportadorPage() {
           <Card className="shadow-md border-orange-200 bg-orange-50/30">
             <CardHeader><CardTitle className="text-lg flex items-center gap-2 text-orange-700"><Trash2 className="h-5 w-5" /> Limpeza de Dados Órfãos</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <p className="text-[10px] text-orange-600 leading-tight">Remove entidades que não possuem matrículas em 2025 (lixo do Censo 2024).</p>
+              <p className="text-[10px] text-orange-600 leading-tight">Remove entidades que não possuem matrículas no Censo {censoAno}.</p>
               <Input placeholder="Cód. IBGE Município" value={targetMunicipioId} onChange={e => setTargetMunicipioId(e.target.value)} className="bg-white border-orange-200" />
               <AlertDialog>
                 <AlertDialogTrigger asChild>

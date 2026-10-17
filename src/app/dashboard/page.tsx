@@ -30,8 +30,10 @@ import {
   Download
 } from "lucide-react";
 import * as XLSX from "xlsx";
-import { DEFAULT_PARAMETERS } from "@/lib/constants";
-import { calcularVAAF, calcularVAAT, calcularVAAR, calcularPNAE, calcularMDE, calcularOutros } from "@/lib/calculations";
+import { normalizarParametros } from "@/lib/constants";
+import { metasDosParametros, metasSaoAsDoPNE, situacaoMetas } from "@/lib/metas-pne";
+import { useMunicipality, useExercicioRefs } from "@/providers/municipality-provider";
+import { calcularVAAF, calcularVAAT, calcularVAAR, calcularPNAE, calcularMDE, calcularOutros, resolverParametros, ponderadasPorSegmento, ponderadorExercicio, etiConsiderado } from "@/lib/calculations";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -83,21 +85,22 @@ export default function DashboardPage() {
   const auth = useAuth();
   const db = useFirestore();
   const { user } = useUser(auth);
-  const { activeMunicipioId, activeMunicipioName, activeUF } = require('@/providers/municipality-provider').useMunicipality();
+  const { activeMunicipioId, activeMunicipioName, activeUF, exercicio, censoAno, statusExercicio } = useMunicipality();
 
   const userProfileRef = useMemo(() => (db && user ? doc(db, 'users', user.uid) : null), [db, user]);
   const { data: profile, loading: profileLoading } = useDoc(userProfileRef);
-  const municipioId = activeMunicipioId;
+  const municipioId = activeMunicipioId || profile?.municipioId;
+  const exRefs = useExercicioRefs(municipioId);
 
-  const schoolsRef = useMemo(() => (db && municipioId ? collection(db, 'municipios', municipioId, 'schools') : null), [db, municipioId]);
+  const schoolsRef = exRefs.schoolsRef;
   const { data: schools, loading: schoolsLoading } = useCollection(schoolsRef);
 
-  const expensesRef = useMemo(() => (db && municipioId ? collection(db, 'municipios', municipioId, 'expenses') : null), [db, municipioId]);
+  const expensesRef = exRefs.expensesRef;
   const { data: allExpenses } = useCollection(expensesRef);
 
-  const paramsRef = useMemo(() => (db && municipioId ? doc(db, 'municipios', municipioId, 'config', 'parameters') : null), [db, municipioId]);
+  const paramsRef = exRefs.paramsRef;
   const { data: customParams } = useDoc(paramsRef);
-  const parametros = (customParams as any) || DEFAULT_PARAMETERS;
+  const parametros = useMemo(() => resolverParametros(normalizarParametros(customParams), schools as any[]), [customParams, schools]);
 
   const { analysis, stats, networkTotals, nativeInsights } = useMemo(() => {
     if (!schools || schools.length === 0) return { analysis: [], stats: null, networkTotals: null, nativeInsights: [] };
@@ -108,13 +111,13 @@ export default function DashboardPage() {
     const filteredSchools = schools.filter(s => {
       const matchesLocalizacao = filterLocalizacao === "todas" ? true : String(s.localizacao).toLowerCase() === filterLocalizacao.toLowerCase();
       const matchesDependencia = filterDependencia === "todas" ? true : String(s.tp_dependencia).trim() === filterDependencia;
-      const matchesETI = filterETI === "todas" ? true : (filterETI === "sim" ? (s.total_eti || 0) > 0 : (s.total_eti || 0) === 0);
+      const matchesETI = filterETI === "todas" ? true : (filterETI === "sim" ? etiConsiderado(s) > 0 : etiConsiderado(s) === 0);
       return matchesLocalizacao && matchesDependencia && matchesETI;
     });
 
     const schoolAnalyses = filteredSchools.map((school: any) => {
       const m = school.matriculas || {};
-      const vaaf = calcularVAAF(m, parametros);
+      const vaaf = calcularVAAF(m, parametros, school.localizacao);
       const vaat = calcularVAAT(school, parametros, totalMatriculasMunicipal);
       const vaar = calcularVAAR(school, parametros, totalMatriculasMunicipal);
       const pnae = calcularPNAE(m, parametros);
@@ -146,46 +149,18 @@ export default function DashboardPage() {
     });
 
     const totalMatriculasRede = municipalSchools.reduce((acc, s: any) => acc + (s.total_matriculas || 0), 0);
-    const totalETIRede = municipalSchools.reduce((acc, s: any) => acc + (s.total_eti || 0), 0);
+    const totalETIRede = municipalSchools.reduce((acc, s: any) => acc + etiConsiderado(s), 0);
     
     const segmentTotals = municipalSchools.reduce((acc, s: any) => {
-      const m = s.matriculas || {};
-      const f = parametros.fatores;
-
-      const infantilRaw = (m.creche_integral || 0) + (m.creche_parcial || 0) + (m.creche_conveniada_int || 0) + (m.creche_conveniada_par || 0) + (m.pre_integral || 0) + (m.pre_parcial || 0);
-      const infantilWeighted = 
-        (m.creche_integral || 0) * (f.A1 || 1.550) +
-        (m.creche_parcial || 0) * (f.A2 || 1.250) +
-        (m.creche_conveniada_int || 0) * (f.A3 || 1.450) +
-        (m.creche_conveniada_par || 0) * (f.A4 || 1.150) +
-        (m.pre_integral || 0) * (f.B1 || 1.500) +
-        (m.pre_parcial || 0) * (f.B2 || 1.150);
-
-      const aiRaw = (m.ef_ai_integral || 0) + (m.ef_ai_parcial || 0);
-      const aiWeighted = (m.ef_ai_integral || 0) * (f.C1 || 1.300) + (m.ef_ai_parcial || 0) * (f.C2 || 1.000);
-
-      const afRaw = (m.ef_af_integral || 0) + (m.ef_af_parcial || 0);
-      const afWeighted = (m.ef_af_integral || 0) * (f.D1 || 1.300) + (m.ef_af_parcial || 0) * (f.D2 || 1.100);
-
-      const ejaRaw = (m.eja_fundamental || 0) + (m.eja_medio || 0);
-      const ejaWeighted = (m.eja_fundamental || 0) * (f.E1 || 0.800) + (m.eja_medio || 0) * (f.E2 || 0.850);
-
-      const totalInfantil = (m.creche_integral || 0) + (m.creche_parcial || 0) + (m.pre_integral || 0) + (m.pre_parcial || 0);
-      const totalAi = (m.ef_ai_integral || 0) + (m.ef_ai_parcial || 0);
-      const totalAf = (m.ef_af_integral || 0) + (m.ef_af_parcial || 0);
-      let fatorBaseAEE = f.C2 || 1.00; 
-      if (totalAf > totalAi && totalAf > totalInfantil) fatorBaseAEE = f.D2 || 1.10;
-      else if (totalInfantil > totalAi && totalInfantil > totalAf) fatorBaseAEE = f.B2 || 1.15;
-      
-      const especialRaw = (m.especial_aee || 0);
-      const especialWeighted = especialRaw * (fatorBaseAEE + (f.F1 || 1.40));
-
+      const seg = ponderadasPorSegmento(s.matriculas, parametros, s.localizacao);
+      const k = ponderadorExercicio(parametros);
+      const add = (x: any, y: any) => ({ raw: x.raw + y.raw, weighted: x.weighted + y.weighted * k });
       return {
-        infantil: { raw: acc.infantil.raw + infantilRaw, weighted: acc.infantil.weighted + infantilWeighted },
-        ai: { raw: acc.ai.raw + aiRaw, weighted: acc.ai.weighted + aiWeighted },
-        af: { raw: acc.af.raw + afRaw, weighted: acc.af.weighted + afWeighted },
-        eja: { raw: acc.eja.raw + ejaRaw, weighted: acc.eja.weighted + ejaWeighted },
-        especial: { raw: acc.especial.raw + especialRaw, weighted: acc.especial.weighted + especialWeighted }
+        infantil: add(acc.infantil, seg.infantil),
+        ai: add(acc.ai, seg.ai),
+        af: add(acc.af, seg.af),
+        eja: add(acc.eja, seg.eja),
+        especial: add(acc.especial, seg.especial)
       };
     }, {
       infantil: { raw: 0, weighted: 0 }, ai: { raw: 0, weighted: 0 }, af: { raw: 0, weighted: 0 }, eja: { raw: 0, weighted: 0 }, especial: { raw: 0, weighted: 0 }
@@ -195,7 +170,7 @@ export default function DashboardPage() {
 
     const municipalRevenue = municipalSchools.reduce((acc, s: any) => {
       const m = s.matriculas || {};
-      const vaaf = calcularVAAF(m, parametros);
+      const vaaf = calcularVAAF(m, parametros, s.localizacao);
       const vaat = calcularVAAT(s, parametros, totalMatriculasRede);
       const vaar = calcularVAAR(s, parametros, totalMatriculasRede);
       const pnae = calcularPNAE(m, parametros);
@@ -213,25 +188,37 @@ export default function DashboardPage() {
     const currentAvgCusto = schoolAnalyses.length > 0 ? schoolAnalyses.reduce((acc, s) => acc + s.custoAluno, 0) / schoolAnalyses.length : 0;
     const currentTotalReceita = schoolAnalyses.reduce((acc, s) => acc + s.receitaTotal, 0);
     const percETI = totalMatriculasRede > 0 ? (totalETIRede / totalMatriculasRede) * 100 : 0;
-    const schoolsWithEtiCount = municipalSchools.filter(s => (s.total_eti || 0) > 0).length;
+    const schoolsWithEtiCount = municipalSchools.filter(s => etiConsiderado(s) > 0).length;
     const percSchoolsWithEti = municipalSchools.length > 0 ? (schoolsWithEtiCount / municipalSchools.length) * 100 : 0;
 
     const hasExpenses = (allExpenses || []).length > 0;
 
+    const metasSituacao = situacaoMetas(
+      { matriculas: totalMatriculasRede, eti: totalETIRede, escolas: municipalSchools.length, escolasComEti: schoolsWithEtiCount },
+      metasDosParametros(parametros),
+      exercicio
+    );
+    const [m31, m36] = metasSituacao;
+    const fonteMeta = metasSaoAsDoPNE(metasDosParametros(parametros)) ? "novo PNE" : "meta municipal";
+
     const technicalInsights = [
       {
-        title: "Meta PNE (Matrículas)",
+        title: "Meta Tempo Integral (Matrículas)",
         value: `${percETI.toFixed(1)}%`,
-        status: percETI >= 40 ? "Conforme" : "Abaixo da Meta",
-        description: percETI >= 40 ? "Rede atende a Meta 6 (mínimo 40% das matrículas em tempo integral)." : "Necessário expandir matrículas ETI para atingir a meta de 40%.",
-        variant: percETI >= 40 ? "success" : "warning"
+        status: m31.atingiuMatriculas ? (m36.atingiuMatriculas ? "Conforme 2036" : "Conforme 2031") : "Abaixo da Meta 2031",
+        description: m31.atingiuMatriculas
+          ? (m36.atingiuMatriculas ? `Rede já atende ${m36.metaMatriculas}% (${fonteMeta}, 2036).` : `Atende ${m31.metaMatriculas}% (2031). Para 2036 (${m36.metaMatriculas}%) faltam ${m36.faltamMatriculas} matrículas.`)
+          : `Faltam ${m31.faltamMatriculas} matrículas para ${m31.metaMatriculas}% em 2031 (≈ ${m31.matriculasPorAno}/ano) e ${m36.faltamMatriculas} para ${m36.metaMatriculas}% em 2036 (${fonteMeta}).`,
+        variant: m31.atingiuMatriculas ? "success" : "warning"
       },
       {
-        title: "Meta PNE (Escolas)",
+        title: "Meta Tempo Integral (Escolas)",
         value: `${percSchoolsWithEti.toFixed(1)}%`,
-        status: percSchoolsWithEti >= 55 ? "Conforme" : "Abaixo da Meta",
-        description: percSchoolsWithEti >= 55 ? "Rede atende a meta de 55% das escolas com tempo integral." : "Necessário ampliar a oferta para atingir 55% das unidades.",
-        variant: percSchoolsWithEti >= 55 ? "success" : "warning"
+        status: m31.atingiuEscolas ? (m36.atingiuEscolas ? "Conforme 2036" : "Conforme 2031") : "Abaixo da Meta 2031",
+        description: m31.atingiuEscolas
+          ? (m36.atingiuEscolas ? `Rede já atende ${m36.metaEscolas}% das escolas (${fonteMeta}, 2036).` : `Atende ${m31.metaEscolas}% (2031). Para 2036 (${m36.metaEscolas}%) faltam ${m36.faltamEscolas} escola(s).`)
+          : `Faltam ${m31.faltamEscolas} escola(s) para ${m31.metaEscolas}% em 2031 e ${m36.faltamEscolas} para ${m36.metaEscolas}% em 2036 (${fonteMeta}).`,
+        variant: m31.atingiuEscolas ? "success" : "warning"
       },
       {
         title: "Sustentabilidade Operacional",
@@ -258,12 +245,13 @@ export default function DashboardPage() {
         schoolsWithEtiCount,
         percSchoolsWithEti,
         totalSchools: municipalSchools.length,
-        totalSecretariaExpenses
+        totalSecretariaExpenses,
+        metasSituacao
       },
       networkTotals: municipalRevenue,
       nativeInsights: technicalInsights
     };
-  }, [schools, allExpenses, parametros, filterLocalizacao, filterDependencia, filterETI]);
+  }, [schools, allExpenses, parametros, filterLocalizacao, filterDependencia, filterETI, exercicio]);
 
   const sortedAnalysis = useMemo(() => {
     let items = [...analysis];
@@ -307,7 +295,7 @@ export default function DashboardPage() {
       const input = {
         municipio: activeMunicipioName || "Município",
         uf: activeUF || "BA",
-        exercicio: 2026,
+        exercicio,
         totalMatriculas: stats.totalMatriculasRede,
         totalETI: stats.totalETIRede,
         percentualETI: Math.round(stats.percentualETI),
@@ -319,8 +307,8 @@ export default function DashboardPage() {
         escolasEmDeficit: stats.deficitCount,
         totalEscolas: stats.totalSchools,
         percentualEscolasETI: Math.round(stats.percSchoolsWithEti),
-        metaMatriculasPNE: "40%",
-        metaEscolasPNE: "55%",
+        metaMatriculasPNE: stats.metasSituacao.map(s => `${s.metaMatriculas}% (${s.ano}) — faltam ${s.faltamMatriculas}`).join("; "),
+        metaEscolasPNE: stats.metasSituacao.map(s => `${s.metaEscolas}% (${s.ano}) — faltam ${s.faltamEscolas}`).join("; "),
         escolasETIlt20Percent: analysis.filter(s => (s.percentual_eti || 0) < 20).length,
         composicaoReceitas: {
           fundebVaaf: { amount: Math.round(networkTotals.vaaf), percentage: Math.round((networkTotals.vaaf / totalRevenue) * 100) },
@@ -363,7 +351,7 @@ export default function DashboardPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `parecer_eti_${activeMunicipioName || 'municipio'}_2026.txt`);
+    link.setAttribute("download", `parecer_eti_${activeMunicipioName || 'municipio'}_${exercicio}.txt`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -378,7 +366,7 @@ export default function DashboardPage() {
       ["Auditoria de Viabilidade", school.nome],
       ["Município", activeMunicipioName],
       ["UF", activeUF],
-      ["Exercício", "2026"],
+      ["Exercício", String(exercicio)],
       [],
       ["RESUMO FINANCEIRO"],
       ["Receita Total Anual", school.receitaTotal],
@@ -389,7 +377,7 @@ export default function DashboardPage() {
       ["Receita/Aluno", school.receitaAluno],
       ["Situação", school.status.toUpperCase()],
       [],
-      ["MICRODADOS DE MATRÍCULAS (CENSO 2025)"],
+      [`MICRODADOS DE MATRÍCULAS (CENSO ${censoAno})`],
       ["Categoria", "Subcategoria", "Valor"],
       ["Infantil", "Creche Integral", school.matriculas?.creche_integral || 0],
       ["Infantil", "Creche Parcial", school.matriculas?.creche_parcial || 0],
@@ -428,7 +416,7 @@ export default function DashboardPage() {
     const wsDespesas = XLSX.utils.aoa_to_sheet(despesasData);
     XLSX.utils.book_append_sheet(wb, wsDespesas, "Despesas");
 
-    XLSX.writeFile(wb, `auditoria_${school.nome.replace(/\s+/g, '_')}_2026.xlsx`);
+    XLSX.writeFile(wb, `auditoria_${school.nome.replace(/\s+/g, '_')}_${exercicio}.xlsx`);
     toast({ title: "Exportação Concluída", description: `Dados de ${school.nome} exportados para Excel.` });
   };
 
@@ -443,7 +431,8 @@ export default function DashboardPage() {
       "Localização": String(s.localizacao).toUpperCase(),
       "Dependência": DEPENDENCIA_LABELS[String(s.tp_dependencia)] || s.tp_dependencia,
       "Total Matrículas": s.total_matriculas || 0,
-      "Matrículas ETI": s.total_eti || 0,
+      "Matrículas ETI (INEP)": s.total_eti || 0,
+      "Matrículas ETI (consideradas)": etiConsiderado(s),
       "% ETI": (s.percentual_eti || 0).toFixed(1) + "%",
       "Receita Total": s.receitaTotal,
       "Custo Total": s.despesaTotal,
@@ -474,7 +463,8 @@ export default function DashboardPage() {
       "EJA Médio": s.matriculas?.eja_medio || 0,
       "Especial AEE": s.matriculas?.especial_aee || 0,
       "TOTAL REAL": s.total_matriculas || 0,
-      "TOTAL ETI": s.total_eti || 0
+      "TOTAL ETI (INEP)": s.total_eti || 0,
+      "TOTAL ETI (considerado)": etiConsiderado(s)
     }));
 
     const wsMatriculas = XLSX.utils.json_to_sheet(matriculasRows);
@@ -532,7 +522,7 @@ export default function DashboardPage() {
     const wsNetwork = XLSX.utils.aoa_to_sheet(networkRows);
     XLSX.utils.book_append_sheet(wb, wsNetwork, "Resumo da Rede");
 
-    XLSX.writeFile(wb, `diagnostico_completo_${activeMunicipioName.replace(/\s+/g, '_')}_2026.xlsx`);
+    XLSX.writeFile(wb, `diagnostico_completo_${(activeMunicipioName || "municipio").replace(/\s+/g, '_')}_${exercicio}.xlsx`);
     toast({ title: "Exportação Concluída", description: "Diagnóstico detalhado da rede exportado." });
   };
 
@@ -550,7 +540,7 @@ export default function DashboardPage() {
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-headline font-bold text-primary">Diagnóstico: {activeMunicipioName}</h2>
-          <p className="text-muted-foreground">Visão geral do exercício fiscal 2026 (Rede Municipal)</p>
+          <p className="text-muted-foreground">Exercício {exercicio} · Censo {censoAno}{statusExercicio === "projecao" ? " · Projeção" : ""} (Rede Municipal)</p>
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
@@ -639,12 +629,52 @@ export default function DashboardPage() {
         <KPICard title="Unidades Risco" value={stats?.deficitCount || 0} icon={AlertCircle} subtitle="Déficit projetado" className={(stats?.deficitCount ?? 0) > 0 ? "bg-orange-50/50 border-orange-200" : ""} />
       </div>
 
+      {stats?.metasSituacao && (
+        <Card className="shadow-md border-primary/10">
+          <CardHeader className="pb-2">
+            <CardTitle className="font-headline text-lg flex items-center gap-2">
+              <GraduationCap className="h-5 w-5 text-primary" /> Metas de Tempo Integral — 2031 e 2036
+            </CardTitle>
+            <CardDescription>
+              {metasSaoAsDoPNE(metasDosParametros(parametros)) ? "Novo PNE (Lei 15.388/2026, Meta 6.a)" : "Metas próprias do município"} · posição pelo Censo {censoAno}, sobre a rede atual ({stats.totalMatriculasRede} alunos, {stats.totalSchools} escolas). Ajuste em Parâmetros → Metas.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Marco</TableHead>
+                  <TableHead className="text-right">Estudantes: atual / meta</TableHead>
+                  <TableHead className="text-right">Matrículas a criar</TableHead>
+                  <TableHead className="text-right">Por ano</TableHead>
+                  <TableHead className="text-right">Escolas: atual / meta</TableHead>
+                  <TableHead className="text-right">Escolas a incluir</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {stats.metasSituacao.map((s) => (
+                  <TableRow key={s.ano}>
+                    <TableCell className="font-bold">Até {s.ano} <span className="text-[10px] font-normal text-muted-foreground">({s.anosRestantes} censos)</span></TableCell>
+                    <TableCell className="text-right">{s.percMatriculas.toFixed(1)}% / <b>{s.metaMatriculas}%</b></TableCell>
+                    <TableCell className={`text-right font-bold ${s.atingiuMatriculas ? "text-green-600" : "text-orange-600"}`}>{s.atingiuMatriculas ? "Atingida" : `+${s.faltamMatriculas}`}</TableCell>
+                    <TableCell className="text-right">{s.atingiuMatriculas ? "—" : `≈ ${s.matriculasPorAno}`}</TableCell>
+                    <TableCell className="text-right">{s.percEscolas.toFixed(1)}% / <b>{s.metaEscolas}%</b></TableCell>
+                    <TableCell className={`text-right font-bold ${s.atingiuEscolas ? "text-green-600" : "text-orange-600"}`}>{s.atingiuEscolas ? "Atingida" : `+${s.faltamEscolas}`}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            <p className="text-[10px] text-muted-foreground mt-2">"Por ano" divide o que falta pelo número de Censos até o marco. Não considera variação do total de alunos da rede.</p>
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="shadow-md border-primary/10">
         <CardHeader className="pb-2">
           <CardTitle className="font-headline text-lg flex items-center gap-2">
             <Users className="h-5 w-5 text-primary" /> Detalhamento de Matrículas por Segmento
           </CardTitle>
-          <CardDescription>Subtotais reais vs ponderados para cálculo do FUNDEB 2026</CardDescription>
+          <CardDescription>Subtotais reais vs ponderados (com NSE × DRec) para o FUNDEB {exercicio}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -691,7 +721,7 @@ export default function DashboardPage() {
           <Card className="shadow-md">
             <CardHeader>
               <CardTitle className="font-headline text-lg">Eficiência Financeira por Unidade</CardTitle>
-              <CardDescription>Comparativo Receita vs Custo Projetado 2026</CardDescription>
+              <CardDescription>Comparativo Receita vs Custo — Exercício {exercicio}</CardDescription>
             </CardHeader>
             <CardContent>
               <Table>
@@ -807,7 +837,7 @@ export default function DashboardPage() {
 
                                   <section className="space-y-3">
                                     <h4 className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-2">
-                                      <Users className="h-3 w-3" /> Microdados de Matrículas (Censo 2025)
+                                      <Users className="h-3 w-3" /> Microdados de Matrículas (Censo {censoAno})
                                     </h4>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                       <div className="space-y-2">

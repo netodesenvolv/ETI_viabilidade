@@ -23,6 +23,11 @@ const GenerateEtiStrategyInputSchema = z.object({
   prioridade: z.string(),
   restricao: z.string().optional(),
   observacoes: z.string().optional(),
+  /** Custo anual a mais por aluno convertido (modelo por turma, aba Custos ETI) */
+  custoExtraAlunoEF: z.number().optional(),
+  custoExtraAlunoEI: z.number().optional(),
+  /** Mínimo anual de 4% do FUNDEB para tempo integral (Res. CIF 23/2026) */
+  minimo4Pct: z.number().optional(),
 });
 
 export type GenerateEtiStrategyInput = z.infer<typeof GenerateEtiStrategyInputSchema>;
@@ -43,7 +48,7 @@ const etiStrategyPrompt = ai.definePrompt({
 Analise a situação da rede municipal de {{{municipio}}}/{{{uf}}} e elabore um roteiro estratégico de expansão ETI.
 
 DADOS ATUAIS DA REDE:
-- Total de matrículas: {{totalMatriculas}}
+- Total de matrículas (sem EJA, critério do PNE/MEC): {{totalMatriculas}}
 - Matrículas ETI hoje: {{totalETI}} ({{pctETI}}%)
 - Meta desejada: {{metaPct}}% em {{prazoAnos}} anos
 - VAAF atual: R$ {{vaaf}}
@@ -54,6 +59,15 @@ DADOS ATUAIS DA REDE:
 - Prioridade definida: {{prioridade}}
 - Restrição orçamentária anual: {{#if restricao}}R$ {{restricao}}{{else}}Não informada{{/if}}
 - Observações: {{#if observacoes}}{{{observacoes}}}{{else}}Nenhuma{{/if}}
+{{#if custoExtraAlunoEF}}- Custo a mais por aluno/ano ao passar para integral: fundamental R$ {{custoExtraAlunoEF}}; educação infantil R$ {{custoExtraAlunoEI}}{{/if}}
+{{#if minimo4Pct}}- Mínimo anual de 4% do FUNDEB destinado à criação de matrículas em tempo integral: R$ {{minimo4Pct}}{{/if}}
+
+REGRAS OBRIGATÓRIAS PARA OS CÁLCULOS:
+- Use exatamente os custos por aluno informados acima (não invente outros valores).
+- A meta é medida sobre as matrículas sem EJA, conferida pelo Censo Escolar do ano do marco.
+- A receita a mais do FUNDEB de um aluno integral só chega no exercício seguinte ao Censo em que ele foi contado; no primeiro ano a rede paga o custo sem a receita.
+- Diferença de fator (integral − parcial) sobre o VAAF: creche 0,30; pré 0,35; anos iniciais 0,50; anos finais 0,40.
+- Se houver restrição orçamentária, o custo adicional anual não pode ultrapassá-la.
 
 ELABORE UM ROTEIRO COMPLETO (Markdown):
 1. Diagnóstico financeiro atual (2-3 parágrafos focando na sustentabilidade).

@@ -18,8 +18,11 @@ import {
   ResponsiveContainer, 
   Cell
 } from "recharts";
-import { DEFAULT_PARAMETERS } from "@/lib/constants";
-import { calcularVAAF, calcularVAAT, calcularPNAE, calcularMDE, calcularOutros } from "@/lib/calculations";
+import { normalizarParametros } from "@/lib/constants";
+import { metasDosParametros, MARCOS } from "@/lib/metas-pne";
+import { useMunicipality, useExercicioRefs } from "@/providers/municipality-provider";
+import { calcularVAAF, calcularVAAT, calcularPNAE, calcularMDE, calcularOutros, resolverParametros, etiConsiderado } from "@/lib/calculations";
+import { pctETIRede, baseMetaMatriculas, custoExtraPorAluno, EtapaETI } from "@/lib/expansao";
 import { 
   GraduationCap, 
   TrendingUp, 
@@ -95,22 +98,26 @@ export default function SimuladorETIPage() {
 
   const userProfileRef = useMemo(() => (db && user ? doc(db, 'users', user.uid) : null), [db, user]);
   const { data: profile, loading: profileLoading } = useDoc(userProfileRef);
-  const municipioId = profile?.municipioId;
+  const { activeMunicipioId, exercicio, censoAno, statusExercicio } = useMunicipality();
+  const municipioId = activeMunicipioId || profile?.municipioId;
+  const exRefs = useExercicioRefs(municipioId);
 
-  const schoolsRef = useMemo(() => (db && municipioId ? collection(db, 'municipios', municipioId, 'schools') : null), [db, municipioId]);
+  const schoolsRef = exRefs.schoolsRef;
   const { data: schools, loading: schoolsLoading } = useCollection(schoolsRef);
 
-  const expensesRef = useMemo(() => (db && municipioId ? collection(db, 'municipios', municipioId, 'expenses') : null), [db, municipioId]);
+  const expensesRef = exRefs.expensesRef;
   const { data: allExpenses } = useCollection(expensesRef);
 
-  const paramsRef = useMemo(() => (db && municipioId ? doc(db, 'municipios', municipioId, 'config', 'parameters') : null), [db, municipioId]);
+  const paramsRef = exRefs.paramsRef;
   const { data: customParams } = useDoc(paramsRef);
-  const parametros = (customParams as any) || DEFAULT_PARAMETERS;
+  const parametros = useMemo(() => resolverParametros(normalizarParametros(customParams), schools as any[]), [customParams, schools]);
+  const metas = useMemo(() => metasDosParametros(parametros), [parametros]);
 
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>("");
   const [novasMatriculasETI, setNovasMatriculasETI] = useState(20);
   const [custoExtraEstimado, setCustoExtraEstimado] = useState(4500); 
   const [logicaExpansao, setLogicaExpansao] = useState<"simples" | "capacidade">("simples");
+  const [etapaAlvo, setEtapaAlvo] = useState<"auto" | "creche" | "pre" | "ef_ai" | "ef_af">("auto");
   const [isCalculating, setIsCalculating] = useState(false);
   const [resultado, setResultado] = useState<SimulacaoResult | null>(null);
 
@@ -124,12 +131,24 @@ export default function SimuladorETIPage() {
   , [municipalSchools]);
 
   const totalETIRedeAtual = useMemo(() => 
-    municipalSchools.reduce((acc, s: any) => acc + (s.total_eti || 0), 0)
+    municipalSchools.reduce((acc, s: any) => acc + etiConsiderado(s), 0)
   , [municipalSchools]);
 
-  const metaPNERedeAtual = useMemo(() => 
-    totalMatriculasRedeAtual > 0 ? (totalETIRedeAtual / totalMatriculasRedeAtual) * 100 : 0
-  , [totalETIRedeAtual, totalMatriculasRedeAtual]);
+  // % da rede no critério do PNE/MEC (sem EJA no denominador)
+  const metaPNERedeAtual = useMemo(() => pctETIRede(municipalSchools).pct, [municipalSchools]);
+
+  // Etapa que será convertida (no automático: a etapa com mais alunos em tempo parcial na escola)
+  const etapaResolvida: EtapaETI = useMemo(() => {
+    if (etapaAlvo !== 'auto') return etapaAlvo;
+    const esc: any = municipalSchools.find((s: any) => s.id === selectedSchoolId);
+    const m: any = esc?.matriculas || {};
+    const PARC: Record<EtapaETI, string> = { creche: 'creche_parcial', pre: 'pre_parcial', ef_ai: 'ef_ai_parcial', ef_af: 'ef_af_parcial' };
+    return (Object.keys(PARC) as EtapaETI[]).sort((a, b) => (Number(m[PARC[b]]) || 0) - (Number(m[PARC[a]]) || 0))[0];
+  }, [etapaAlvo, municipalSchools, selectedSchoolId]);
+
+  // Custo sugerido pela aba Parâmetros › Custos ETI (pode ser alterado à mão)
+  const custoSugerido = useMemo(() => Math.round(custoExtraPorAluno(etapaResolvida, parametros)), [etapaResolvida, parametros]);
+  useEffect(() => { setCustoExtraEstimado(custoSugerido); }, [custoSugerido]);
 
   useEffect(() => {
     if (municipalSchools.length > 0 && !selectedSchoolId) {
@@ -138,7 +157,7 @@ export default function SimuladorETIPage() {
   }, [municipalSchools, selectedSchoolId]);
 
   const handleRunSimulation = () => {
-    const selectedSchool = municipalSchools.find((s: any) => s.id === selectedSchoolId);
+    const selectedSchool: any = municipalSchools.find((s: any) => s.id === selectedSchoolId);
     if (!selectedSchool) return;
 
     setIsCalculating(true);
@@ -147,7 +166,7 @@ export default function SimuladorETIPage() {
       const schoolMatriculas = selectedSchool.matriculas || {};
       const totalMatriculasAntes = PHYSICAL_BUCKETS.reduce((acc, cat) => acc + (Number(schoolMatriculas[cat]) || 0), 0);
       
-      const vaafA = calcularVAAF(schoolMatriculas, parametros);
+      const vaafA = calcularVAAF(schoolMatriculas, parametros, selectedSchool.localizacao);
       const vaatA = calcularVAAT(selectedSchool, parametros, totalMatriculasRedeAtual);
       const pnaeA = calcularPNAE(schoolMatriculas, parametros);
       const mdeA = calcularMDE(selectedSchool, parametros, totalMatriculasRedeAtual);
@@ -167,14 +186,19 @@ export default function SimuladorETIPage() {
       const vagasQueDevemSerLiberadas = novasMatriculasETI * fatorReducao;
       
       const novasMatriculas = { ...schoolMatriculas };
+      // Etapa que vira tempo integral: escolhida pelo usuário ou, no automático, a etapa com mais alunos em tempo parcial
+      const PARCIAL: Record<string, keyof EnrollmentCounts> = { creche: 'creche_parcial', pre: 'pre_parcial', ef_ai: 'ef_ai_parcial', ef_af: 'ef_af_parcial' };
+      const INTEGRAL: Record<string, keyof EnrollmentCounts> = { creche: 'creche_integral', pre: 'pre_integral', ef_ai: 'ef_ai_integral', ef_af: 'ef_af_integral' };
+      const etapa = etapaAlvo !== 'auto' ? etapaAlvo
+        : (Object.keys(PARCIAL).sort((a, b) => (Number(schoolMatriculas[PARCIAL[b]]) || 0) - (Number(schoolMatriculas[PARCIAL[a]]) || 0))[0]);
+      const targetBucket = INTEGRAL[etapa];
+      // Vagas liberadas: primeiro da própria etapa (os alunos convertidos), depois das demais turmas parciais; EJA por último
+      // A EJA (noturno) não disputa a sala do diurno, por isso não é retirada
       const categoriasPrioridadeRemover: (keyof EnrollmentCounts)[] = [
-        'eja_fundamental', 'eja_medio', 'ef_af_parcial', 'ef_ai_parcial', 
-        'pre_parcial', 'creche_parcial', 'creche_conveniada_par',
-        'creche_conveniada_int', 'pre_integral', 'creche_integral'
+        PARCIAL[etapa],
+        ...(['ef_ai_parcial', 'ef_af_parcial', 'pre_parcial', 'creche_parcial', 'creche_conveniada_par'] as (keyof EnrollmentCounts)[]).filter(c => c !== PARCIAL[etapa]),
       ];
-
-      const targetBucket = selectedSchool.nome.toLowerCase().includes('fundamental') ? 'ef_af_integral' : 'ef_ai_integral';
-      novasMatriculas[targetBucket] = (novasMatriculas[targetBucket] || 0) + novasMatriculasETI;
+      novasMatriculas[targetBucket] = (Number(novasMatriculas[targetBucket]) || 0) + novasMatriculasETI;
 
       let remanescenteRemover = vagasQueDevemSerLiberadas;
       let totalRemovidoFisico = 0;
@@ -191,7 +215,7 @@ export default function SimuladorETIPage() {
       const totalMatriculasEscolaNova = PHYSICAL_BUCKETS.reduce((acc, cat) => acc + (Number(novasMatriculas[cat]) || 0), 0);
       const ratioAlunos = totalMatriculasAntes > 0 ? totalMatriculasEscolaNova / totalMatriculasAntes : 1;
 
-      const vaafS = calcularVAAF(novasMatriculas, parametros);
+      const vaafS = calcularVAAF(novasMatriculas, parametros, selectedSchool.localizacao);
       const pnaeS = calcularPNAE(novasMatriculas, parametros);
       const receitaSimulada = vaafS + vaatA + pnaeS + mdeA + outrosA;
 
@@ -199,6 +223,8 @@ export default function SimuladorETIPage() {
       const adicionalETI = novasMatriculasETI * custoExtraEstimado;
       const despesaSimulada = despesaPessoal + operacionalSimulado + adicionalETI;
       
+      const baseMetaDepois = baseMetaMatriculas({ ...selectedSchool, matriculas: novasMatriculas });
+      const baseMetaAntes = baseMetaMatriculas(selectedSchool);
       const matriculasDepoisETI = (novasMatriculas.creche_integral || 0) + (novasMatriculas.pre_integral || 0) + (novasMatriculas.ef_ai_integral || 0) + (novasMatriculas.ef_af_integral || 0);
 
       setResultado({
@@ -212,8 +238,8 @@ export default function SimuladorETIPage() {
         novasMatriculasETI,
         reducaoVagas: totalMatriculasAntes - totalMatriculasEscolaNova,
         vagasParciaisRemovidas: totalRemovidoFisico,
-        percentualETIAnterior: selectedSchool.percentual_eti || 0,
-        percentualETINovo: totalMatriculasEscolaNova > 0 ? (matriculasDepoisETI / totalMatriculasEscolaNova) * 100 : 0,
+        percentualETIAnterior: baseMetaAntes > 0 ? (etiConsiderado(selectedSchool) / baseMetaAntes) * 100 : 0,
+        percentualETINovo: baseMetaDepois > 0 ? (matriculasDepoisETI / baseMetaDepois) * 100 : 0,
         viabilidade: (receitaSimulada - despesaSimulada) >= (receitaAtual - despesaAtual) ? 100 : 0,
         totalMatriculasEscolaNova,
         detalhes: {
@@ -233,17 +259,19 @@ export default function SimuladorETIPage() {
 
   const networkMetaSimulada = useMemo(() => {
     if (!resultado) return 0;
-    const novaMatriculaRede = totalMatriculasRedeAtual - resultado.reducaoVagas;
-    const novoETIRede = totalETIRedeAtual + resultado.novasMatriculasETI;
-    return novaMatriculaRede > 0 ? (novoETIRede / novaMatriculaRede) * 100 : 0;
-  }, [resultado, totalMatriculasRedeAtual, totalETIRedeAtual]);
+    // Base sem EJA. Os alunos que saem da escola (conversão 1:2) continuam na rede, realocados em outra escola,
+    // por isso o total de matrículas da rede não diminui.
+    const { base, eti } = pctETIRede(municipalSchools);
+    const novoETIRede = eti + resultado.novasMatriculasETI;
+    return base > 0 ? (novoETIRede / base) * 100 : 0;
+  }, [resultado, municipalSchools]);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-headline font-bold text-primary">Simulador de Expansão: {profile?.municipio}</h2>
-          <p className="text-muted-foreground">Projeções de impacto fiscal e físico 2026</p>
+          <p className="text-muted-foreground">Projeções de impacto fiscal e físico — Exercício {exercicio} (Censo {censoAno})</p>
         </div>
         <div className="flex gap-2">
            {resultado && (
@@ -256,7 +284,7 @@ export default function SimuladorETIPage() {
                <DialogContent className="max-w-4xl">
                  <DialogHeader>
                    <DialogTitle>Auditoria de Viabilidade Financeira</DialogTitle>
-                   <DialogDescription>Comparativo técnico das rubricas de receita e despesas (Cenário 2026).</DialogDescription>
+                   <DialogDescription>Comparativo técnico das rubricas de receita e despesas (Exercício {exercicio}).</DialogDescription>
                  </DialogHeader>
                  <ScrollArea className="max-h-[75vh] pr-4">
                    <div className="space-y-8 py-4">
@@ -358,7 +386,7 @@ export default function SimuladorETIPage() {
              </Dialog>
            )}
            <Badge variant="outline" className="h-fit py-1 px-3 border-accent/30 text-accent bg-accent/5 gap-2">
-             <RefreshCcw className="h-3 w-3" /> Motor de Cálculo 2026
+             <RefreshCcw className="h-3 w-3" /> Motor de Cálculo {exercicio}
            </Badge>
         </div>
       </div>
@@ -407,6 +435,20 @@ export default function SimuladorETIPage() {
               </RadioGroup>
             </div>
 
+            <div className="space-y-2 pt-4 border-t">
+              <Label>Etapa que passa a ser integral</Label>
+              <Select value={etapaAlvo} onValueChange={(v: any) => setEtapaAlvo(v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto">Automático (etapa com mais alunos em parcial)</SelectItem>
+                  <SelectItem value="creche">Creche</SelectItem>
+                  <SelectItem value="pre">Pré-escola</SelectItem>
+                  <SelectItem value="ef_ai">Fundamental — anos iniciais</SelectItem>
+                  <SelectItem value="ef_af">Fundamental — anos finais</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="space-y-4 pt-4 border-t">
               <div className="flex justify-between items-center">
                 <Label>Novas Matrículas ETI</Label>
@@ -420,7 +462,11 @@ export default function SimuladorETIPage() {
                 <Label>Custo Extra Anual / Aluno</Label>
                 <Input type="number" className="w-24 h-8 text-right font-bold" value={custoExtraEstimado} onChange={(e) => setCustoExtraEstimado(Number(e.target.value))} />
               </div>
-              <Slider value={[custoExtraEstimado]} onValueChange={(v) => setCustoExtraEstimado(v[0])} min={1000} max={10000} step={100} />
+              <Slider value={[custoExtraEstimado]} onValueChange={(v) => setCustoExtraEstimado(v[0])} min={1000} max={15000} step={100} />
+              <p className="text-[10px] text-muted-foreground">
+                Sugerido para esta etapa: R$ {custoSugerido.toLocaleString('pt-BR')} (Parâmetros › Custos ETI).
+                {custoExtraEstimado !== custoSugerido && <button type="button" className="ml-1 underline text-primary" onClick={() => setCustoExtraEstimado(custoSugerido)}>Usar sugerido</button>}
+              </p>
             </div>
 
             <Button className="w-full gap-2 mt-4" onClick={handleRunSimulation} disabled={isCalculating || !selectedSchoolId}>
@@ -520,6 +566,17 @@ export default function SimuladorETIPage() {
                             <p className="text-[8px] text-primary">Simulado</p>
                             <p className="font-bold text-primary">{networkMetaSimulada.toFixed(1)}%</p>
                           </div>
+                        </div>
+                        <div className="space-y-0.5 pt-1">
+                          {MARCOS.map(({ chave, ano }) => {
+                            const meta = metas[chave].matriculas;
+                            const ok = networkMetaSimulada >= meta;
+                            return (
+                              <p key={chave} className={`text-[10px] ${ok ? "text-green-600" : "text-muted-foreground"}`}>
+                                Meta {ano}: {meta}% {ok ? "— atingida" : `— faltam ${(meta - networkMetaSimulada).toFixed(1)} p.p.`}
+                              </p>
+                            );
+                          })}
                         </div>
                      </div>
                   </div>
